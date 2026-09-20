@@ -3,7 +3,13 @@ packages:
   - "services/*"
   - "packages/*"
 
-# Native postinstall scripts we explicitly trust.
+# Expo's Metro bundler resolves transitive peer dependencies (whatwg-fetch,
+# react-native-css-interop, @expo/metro-runtime and friends) by walking
+# node_modules directories. pnpm's default isolated store hides those, so the
+# bundle fails on imports nothing declared directly. Hoisting makes the tree
+# look the way React Native expects.
+nodeLinker: hoisted
+
 strictDepBuilds: false
 
 onlyBuiltDependencies:

@@ -1,8 +1,10 @@
 /**
  * NutriSnap design tokens — the "bio-glass" theme from the project plan.
  *
- * Both the web Tailwind config and the mobile NativeWind config read from
- * here, so a colour only ever needs changing in one place.
+ * The raw palette lives in ../palette.json rather than in this file, because
+ * two Tailwind configs need it and one of them (the mobile app's) is
+ * CommonJS and cannot import TypeScript. JSON is the one format both the
+ * bundlers and a plain `require` agree on.
  *
  * The rule the plan sets: one vivid accent gradient (electric lime → cyan),
  * reserved for the calorie ring and primary CTAs. Everything else is charcoal
@@ -10,57 +12,15 @@
  * anything.
  */
 
-export const colors = {
-  /** Page background — near-black with a faint blue cast, not pure #000. */
-  base: {
-    900: '#07090C',
-    800: '#0C1014',
-    700: '#12171D',
-    600: '#1A2029',
-    500: '#242C37',
-  },
+import palette from '../palette.json' with { type: 'json' };
 
-  /** Frosted card surfaces. Used with backdrop-blur. */
-  glass: {
-    DEFAULT: 'rgba(255, 255, 255, 0.045)',
-    strong: 'rgba(255, 255, 255, 0.075)',
-    border: 'rgba(255, 255, 255, 0.10)',
-    borderStrong: 'rgba(255, 255, 255, 0.16)',
-  },
-
-  /** The one accent. */
-  accent: {
-    lime: '#C6FF3D',
-    limeSoft: '#DEFF8F',
-    cyan: '#3DE8FF',
-    cyanSoft: '#8FF3FF',
-  },
-
-  /** Macro colours — distinct from the accent so rings stay readable. */
-  macro: {
-    protein: '#FF8A5B',
-    carbs: '#5BA8FF',
-    fat: '#FFD166',
-  },
-
-  text: {
-    primary: '#F4F7FA',
-    secondary: '#9AA6B4',
-    tertiary: '#5F6B7A',
-  },
-
-  state: {
-    success: '#43E6A0',
-    warning: '#FFC24B',
-    danger: '#FF5B6E',
-  },
-} as const;
+export const colors = palette;
 
 /** The accent gradient, as stops, for CSS and SVG alike. */
 export const accentGradient = {
-  from: colors.accent.lime,
-  to: colors.accent.cyan,
-  css: `linear-gradient(135deg, ${colors.accent.lime} 0%, ${colors.accent.cyan} 100%)`,
+  from: palette.accent.lime,
+  to: palette.accent.cyan,
+  css: `linear-gradient(135deg, ${palette.accent.lime} 0%, ${palette.accent.cyan} 100%)`,
 } as const;
 
 export const macroGradients = {

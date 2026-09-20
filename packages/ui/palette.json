@@ -1,0 +1,36 @@
+{
+  "base": {
+    "900": "#07090C",
+    "800": "#0C1014",
+    "700": "#12171D",
+    "600": "#1A2029",
+    "500": "#242C37"
+  },
+  "glass": {
+    "DEFAULT": "rgba(255, 255, 255, 0.045)",
+    "strong": "rgba(255, 255, 255, 0.075)",
+    "border": "rgba(255, 255, 255, 0.10)",
+    "borderStrong": "rgba(255, 255, 255, 0.16)"
+  },
+  "accent": {
+    "lime": "#C6FF3D",
+    "limeSoft": "#DEFF8F",
+    "cyan": "#3DE8FF",
+    "cyanSoft": "#8FF3FF"
+  },
+  "macro": {
+    "protein": "#FF8A5B",
+    "carbs": "#5BA8FF",
+    "fat": "#FFD166"
+  },
+  "text": {
+    "primary": "#F4F7FA",
+    "secondary": "#9AA6B4",
+    "tertiary": "#5F6B7A"
+  },
+  "state": {
+    "success": "#43E6A0",
+    "warning": "#FFC24B",
+    "danger": "#FF5B6E"
+  }
+}

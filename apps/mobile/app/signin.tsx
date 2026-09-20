@@ -1,0 +1,159 @@
+import { useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '@nutrisnap/ui';
+import { supabase } from '../src/lib/supabase';
+import { api } from '../src/lib/api';
+import { clearStoredAnswers, readStoredAnswers } from '../src/lib/session';
+import { Button, Card, ErrorNote, Screen } from '../src/components/ui';
+
+export default function SignIn() {
+  const params = useLocalSearchParams<{ mode?: string }>();
+  const [mode, setMode] = useState<'signin' | 'signup'>(
+    params.mode === 'signup' ? 'signup' : 'signin',
+  );
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  /** Flush the pre-signup quiz answers now that an account exists. */
+  async function savePendingOnboarding() {
+    const answers = await readStoredAnswers();
+    if (!answers) return;
+    try {
+      await api.completeOnboarding(answers as Record<string, unknown>);
+      await clearStoredAnswers();
+    } catch {
+      // Keep them for the dashboard to retry rather than losing the quiz.
+    }
+  }
+
+  async function submit() {
+    setError(null);
+    setNotice(null);
+    setLoading(true);
+
+    try {
+      if (mode === 'signup') {
+        const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+        if (signUpError) throw signUpError;
+
+        if (!data.session) {
+          setNotice('Check your inbox to confirm your email, then sign in.');
+          setMode('signin');
+          return;
+        }
+      } else {
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) throw signInError;
+      }
+
+      await savePendingOnboarding();
+      router.replace('/(tabs)');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Something went wrong. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputStyle = {
+    height: 52,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    color: colors.text.primary,
+    paddingHorizontal: 16,
+    fontSize: 16,
+  } as const;
+
+  return (
+    <Screen>
+      <SafeAreaView style={{ flex: 1 }}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Card style={{ padding: 24, gap: 16 }}>
+              <View>
+                <Text style={{ color: colors.text.primary, fontSize: 26, fontWeight: '700' }}>
+                  {mode === 'signup' ? 'Create your account' : 'Welcome back'}
+                </Text>
+                <Text style={{ color: colors.text.secondary, fontSize: 15, marginTop: 8, lineHeight: 21 }}>
+                  {mode === 'signup'
+                    ? 'One account keeps your plan in sync on web and phone.'
+                    : 'Sign in to pick up where you left off.'}
+                </Text>
+              </View>
+
+              <View style={{ gap: 10 }}>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.text.tertiary}
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  keyboardType="email-address"
+                  style={inputStyle}
+                  accessibilityLabel="Email"
+                />
+
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Password (at least 6 characters)"
+                  placeholderTextColor={colors.text.tertiary}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  style={inputStyle}
+                  accessibilityLabel="Password"
+                />
+              </View>
+
+              {error && <ErrorNote message={error} />}
+
+              {notice && (
+                <Text style={{ color: colors.accent.cyan, fontSize: 14, lineHeight: 20 }}>
+                  {notice}
+                </Text>
+              )}
+
+              <Button
+                onPress={submit}
+                loading={loading}
+                disabled={email.length < 3 || password.length < 6}
+              >
+                {mode === 'signup' ? 'Create account' : 'Sign in'}
+              </Button>
+
+              <Pressable
+                onPress={() => {
+                  setMode(mode === 'signup' ? 'signin' : 'signup');
+                  setError(null);
+                  setNotice(null);
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>
+                  {mode === 'signup'
+                    ? 'Already have an account? Sign in'
+                    : "Don't have an account? Create one"}
+                </Text>
+              </Pressable>
+            </Card>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Screen>
+  );
+}

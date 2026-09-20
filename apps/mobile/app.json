@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "NutriSnap",
+    "slug": "nutrisnap",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "nutrisnap",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "backgroundColor": "#07090C",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#07090C"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nutrisnap.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "NutriSnap uses your camera to photograph meals so it can estimate their nutrition.",
+        "NSPhotoLibraryUsageDescription": "NutriSnap needs access to your photos so you can log meals you already photographed."
+      }
+    },
+    "android": {
+      "package": "com.nutrisnap.app",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "backgroundColor": "#07090C"
+      },
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "NutriSnap uses your camera to photograph meals so it can estimate their nutrition."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "NutriSnap needs access to your photos so you can log meals you already photographed."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
