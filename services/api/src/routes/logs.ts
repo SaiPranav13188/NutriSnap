@@ -153,10 +153,16 @@ export async function logRoutes(app: FastifyInstance): Promise<void> {
     return { logs: (data ?? []) as FoodLog[] };
   });
 
-  /** The week strip: one totals row per day for the last N days. */
+  /**
+   * The date strip: one totals row per day for the last N days.
+   *
+   * The cap is a year, not a month. The mobile strip scrolls 90 days back and
+   * asks for all of them at once; capping at 31 made that request a validation
+   * error, which took the whole dashboard load down with it.
+   */
   app.get('/api/logs/week', async (request) => {
     const { days = 7 } = z
-      .object({ days: z.coerce.number().int().min(1).max(31).optional() })
+      .object({ days: z.coerce.number().int().min(1).max(366).optional() })
       .parse(request.query);
 
     const to = new Date();
