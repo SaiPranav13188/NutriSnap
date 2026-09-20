@@ -27,7 +27,6 @@ export default function RootLayout() {
             <Stack.Screen name="onboarding" />
             <Stack.Screen name="signin" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="result" options={{ animation: 'slide_from_bottom' }} />
           </Stack>
         </SessionProvider>
       </SafeAreaProvider>
