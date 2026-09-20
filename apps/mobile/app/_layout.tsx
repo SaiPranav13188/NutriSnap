@@ -1,6 +1,9 @@
 import '../global.css';
 import 'react-native-gesture-handler';
-import { Stack } from 'expo-router';
+// Expo Router 57 no longer re-exports Stack from the package root — importing
+// it from 'expo-router' yields undefined and the app dies at startup with
+// "undefined is not a function". The navigator lives on its own subpath now.
+import { Stack } from 'expo-router/stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';

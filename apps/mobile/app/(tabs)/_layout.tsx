@@ -1,6 +1,9 @@
 import { useEffect } from 'react';
 import { Text, type ColorValue } from 'react-native';
-import { Tabs, router } from 'expo-router';
+import { router } from 'expo-router';
+// Same story as Stack: the root export of Tabs is deprecated in Expo Router 57
+// and points here instead.
+import { Tabs } from 'expo-router/js-tabs';
 import { colors } from '@nutrisnap/ui';
 import { useSession } from '../../src/lib/session';
 
