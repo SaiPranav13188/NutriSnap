@@ -14,8 +14,9 @@ const schema = z.object({
   SUPABASE_ANON_KEY: z.string().min(20, 'SUPABASE_ANON_KEY is missing'),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20, 'SUPABASE_SERVICE_ROLE_KEY is missing'),
 
-  ANTHROPIC_API_KEY: z.string().min(10, 'ANTHROPIC_API_KEY is missing'),
-  ANTHROPIC_VISION_MODEL: z.string().default('claude-opus-5'),
+  // Free key from https://aistudio.google.com/apikey — no card required.
+  GEMINI_API_KEY: z.string().min(10, 'GEMINI_API_KEY is missing'),
+  GEMINI_VISION_MODEL: z.string().default('gemini-2.5-flash'),
 
   /** Comma-separated list. Empty means "reflect any origin" (dev only). */
   API_CORS_ORIGINS: z.string().default(''),

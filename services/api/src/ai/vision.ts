@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { ApiError as GenAiApiError, GoogleGenAI } from '@google/genai';
+import { z } from 'zod';
 import { env } from '../env.js';
 import { HttpError } from '../auth.js';
 import {
@@ -9,17 +9,36 @@ import {
   type LabelAnalysisResult,
 } from './schemas.js';
 
-const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+/**
+ * Food analysis, powered by Google Gemini's free tier.
+ *
+ * Get a key at https://aistudio.google.com/apikey — no card required.
+ *
+ * Note on the free tier: Google may use prompts and images sent through it to
+ * improve their models, and it is rate limited (roughly 15 requests a minute).
+ * Both are acceptable for development; if this ever holds real users' meal
+ * photos, move to a paid tier or a provider that does not train on input.
+ */
 
-const MODEL = env.ANTHROPIC_VISION_MODEL;
+const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+
+const MODEL = env.GEMINI_VISION_MODEL;
 
 /**
- * These are user-facing scans — someone is watching a spinner — so we trade a
- * little depth for latency. Raise `effort` to "high" if portion estimates come
- * back weaker than you want; the cost/quality knob is here and nowhere else.
+ * Gemini accepts plain JSON Schema for structured output, and Zod 4 emits
+ * exactly that — so the same schema that types the result also constrains the
+ * model. One definition, no drift.
+ *
+ * `$schema` is stripped because the API rejects unknown top-level keys.
  */
-const IMAGE_EFFORT = 'medium' as const;
-const TEXT_EFFORT = 'low' as const;
+function jsonSchemaFor(schema: z.ZodType): unknown {
+  const { $schema, ...rest } = z.toJSONSchema(schema) as Record<string, unknown>;
+  void $schema;
+  return rest;
+}
+
+const FOOD_SCHEMA = jsonSchemaFor(foodAnalysisSchema);
+const LABEL_SCHEMA = jsonSchemaFor(labelAnalysisSchema);
 
 const SYSTEM_PROMPT = `You are the nutrition estimation engine behind a calorie tracking app.
 
@@ -41,35 +60,117 @@ honest low score is more useful than a confident wrong one.
 
 Return values for the whole portion shown, not per 100g. Never return zero for every macro —
 if you genuinely cannot identify food in the image, say so in notes and give your best
-estimate for what you can see.`;
+estimate for what you can see.
 
-type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
+Respond with JSON matching the provided schema and nothing else.`;
 
-const SUPPORTED_MEDIA_TYPES: readonly string[] = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const LABEL_SYSTEM_PROMPT =
+  'You read nutrition facts panels off packaging for a calorie tracking app. Transcribe ' +
+  'the printed values exactly rather than estimating them. If the panel lists values per ' +
+  '100g and per serving, use the per-serving column. If a value is not printed, return 0 ' +
+  'for it rather than guessing. Respond with JSON matching the provided schema and nothing else.';
 
-export function assertSupportedMediaType(mediaType: string): ImageMediaType {
+const SUPPORTED_MEDIA_TYPES: readonly string[] = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+];
+
+export function assertSupportedMediaType(mediaType: string): string {
   if (!SUPPORTED_MEDIA_TYPES.includes(mediaType)) {
     throw new HttpError(
       415,
-      `Unsupported image type "${mediaType}". Use JPEG, PNG, WebP or GIF.`,
+      `Unsupported image type "${mediaType}". Use JPEG, PNG, WebP or HEIC.`,
       'unsupported_media_type',
     );
   }
-  return mediaType as ImageMediaType;
+  return mediaType;
 }
 
 /** Turn an SDK failure into something the client can act on. */
 function rethrowAsHttp(error: unknown, what: string): never {
-  if (error instanceof Anthropic.RateLimitError) {
-    throw new HttpError(429, 'The nutrition service is busy. Try again in a moment.', 'ai_rate_limited');
-  }
-  if (error instanceof Anthropic.AuthenticationError) {
-    throw new HttpError(500, 'Nutrition service is misconfigured.', 'ai_unauthenticated');
-  }
-  if (error instanceof Anthropic.APIError) {
+  if (error instanceof GenAiApiError) {
+    // 429 is the one users on the free tier will actually hit.
+    if (error.status === 429) {
+      throw new HttpError(
+        429,
+        'The free nutrition service is rate limited right now. Wait a few seconds and try again.',
+        'ai_rate_limited',
+      );
+    }
+    if (error.status === 401 || error.status === 403) {
+      throw new HttpError(500, 'Nutrition service is misconfigured.', 'ai_unauthenticated');
+    }
     throw new HttpError(502, `Could not ${what} right now.`, 'ai_unavailable');
   }
   throw error;
+}
+
+/**
+ * Run a request and parse the result back through the Zod schema.
+ *
+ * Gemini is constrained by the schema, but it is still a model returning text,
+ * so we validate rather than trust. A response that does not parse is treated
+ * as a service failure, not silently passed to the user as nutrition data.
+ */
+async function generateStructured<T>(params: {
+  schema: z.ZodType<T>;
+  jsonSchema: unknown;
+  systemPrompt: string;
+  parts: Array<Record<string, unknown>>;
+  what: string;
+}): Promise<T> {
+  let raw: string | undefined;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [{ role: 'user', parts: params.parts }],
+      config: {
+        systemInstruction: params.systemPrompt,
+        responseMimeType: 'application/json',
+        responseJsonSchema: params.jsonSchema,
+        // Nutrition estimation should be repeatable: the same photo should not
+        // produce a different calorie count on each scan.
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+      },
+    });
+
+    const blockReason = response.promptFeedback?.blockReason;
+    if (blockReason) {
+      throw new HttpError(422, 'That image could not be analyzed.', 'ai_refused');
+    }
+
+    raw = response.text;
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    return rethrowAsHttp(error, params.what);
+  }
+
+  if (!raw) {
+    throw new HttpError(502, 'The nutrition service returned an empty result.', 'ai_empty');
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(502, 'The nutrition service returned unreadable data.', 'ai_unparseable');
+  }
+
+  const result = params.schema.safeParse(parsed);
+  if (!result.success) {
+    throw new HttpError(
+      502,
+      'The nutrition service returned data in an unexpected shape.',
+      'ai_invalid_shape',
+    );
+  }
+
+  return result.data;
 }
 
 /**
@@ -95,76 +196,34 @@ Take the correction as true and re-estimate the whole dish accordingly. If the c
 about portion size, scale the components rather than re-identifying the food.`
     : 'Identify the food in this image and estimate its nutrition.';
 
-  try {
-    const response = await client.messages.parse({
-      model: MODEL,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      thinking: { type: 'adaptive' },
-      output_config: {
-        effort: IMAGE_EFFORT,
-        format: zodOutputFormat(foodAnalysisSchema),
-      },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: params.base64 } },
-            { type: 'text', text: instruction },
-          ],
-        },
-      ],
-    });
-
-    if (response.stop_reason === 'refusal') {
-      throw new HttpError(422, 'That image could not be analyzed.', 'ai_refused');
-    }
-    if (!response.parsed_output) {
-      throw new HttpError(502, 'The nutrition service returned an unreadable result.', 'ai_unparseable');
-    }
-
-    return response.parsed_output;
-  } catch (error) {
-    if (error instanceof HttpError) throw error;
-    return rethrowAsHttp(error, 'analyze that photo');
-  }
+  return generateStructured({
+    schema: foodAnalysisSchema,
+    jsonSchema: FOOD_SCHEMA,
+    systemPrompt: SYSTEM_PROMPT,
+    parts: [
+      { inlineData: { mimeType: mediaType, data: params.base64 } },
+      { text: instruction },
+    ],
+    what: 'analyze that photo',
+  });
 }
 
 /** Natural-language logging: "fried rice and two eggs" in, macros out. */
 export async function analyzeFoodText(description: string): Promise<FoodAnalysisResult> {
-  try {
-    const response = await client.messages.parse({
-      model: MODEL,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      thinking: { type: 'adaptive' },
-      output_config: {
-        effort: TEXT_EFFORT,
-        format: zodOutputFormat(foodAnalysisSchema),
+  return generateStructured({
+    schema: foodAnalysisSchema,
+    jsonSchema: FOOD_SCHEMA,
+    systemPrompt: SYSTEM_PROMPT,
+    parts: [
+      {
+        text:
+          `Estimate the nutrition for this meal described in the user's own words:\n\n"${description}"\n\n` +
+          'Where the description does not specify a portion, assume a typical single serving ' +
+          'and say so in notes.',
       },
-      messages: [
-        {
-          role: 'user',
-          content:
-            `Estimate the nutrition for this meal described in the user's own words:\n\n"${description}"\n\n` +
-            'Where the description does not specify a portion, assume a typical single serving ' +
-            'and say so in notes.',
-        },
-      ],
-    });
-
-    if (response.stop_reason === 'refusal') {
-      throw new HttpError(422, 'That description could not be analyzed.', 'ai_refused');
-    }
-    if (!response.parsed_output) {
-      throw new HttpError(502, 'The nutrition service returned an unreadable result.', 'ai_unparseable');
-    }
-
-    return response.parsed_output;
-  } catch (error) {
-    if (error instanceof HttpError) throw error;
-    return rethrowAsHttp(error, 'analyze that description');
-  }
+    ],
+    what: 'analyze that description',
+  });
 }
 
 /** OCR a nutrition-facts panel straight off the packaging. */
@@ -174,41 +233,14 @@ export async function analyzeNutritionLabel(params: {
 }): Promise<LabelAnalysisResult> {
   const mediaType = assertSupportedMediaType(params.mediaType);
 
-  try {
-    const response = await client.messages.parse({
-      model: MODEL,
-      max_tokens: 4096,
-      system:
-        'You read nutrition facts panels off packaging for a calorie tracking app. Transcribe ' +
-        'the printed values exactly rather than estimating them. If the panel lists values per ' +
-        '100g and per serving, use the per-serving column. If a value is not printed, return 0 ' +
-        'for it rather than guessing.',
-      thinking: { type: 'adaptive' },
-      output_config: {
-        effort: IMAGE_EFFORT,
-        format: zodOutputFormat(labelAnalysisSchema),
-      },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: params.base64 } },
-            { type: 'text', text: 'Read this nutrition label.' },
-          ],
-        },
-      ],
-    });
-
-    if (response.stop_reason === 'refusal') {
-      throw new HttpError(422, 'That label could not be read.', 'ai_refused');
-    }
-    if (!response.parsed_output) {
-      throw new HttpError(502, 'The nutrition service returned an unreadable result.', 'ai_unparseable');
-    }
-
-    return response.parsed_output;
-  } catch (error) {
-    if (error instanceof HttpError) throw error;
-    return rethrowAsHttp(error, 'read that label');
-  }
+  return generateStructured({
+    schema: labelAnalysisSchema,
+    jsonSchema: LABEL_SCHEMA,
+    systemPrompt: LABEL_SYSTEM_PROMPT,
+    parts: [
+      { inlineData: { mimeType: mediaType, data: params.base64 } },
+      { text: 'Read this nutrition label.' },
+    ],
+    what: 'read that label',
+  });
 }

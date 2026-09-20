@@ -23,9 +23,9 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
-      - key: ANTHROPIC_VISION_MODEL
-        value: claude-opus-5
+      - key: GEMINI_VISION_MODEL
+        value: gemini-2.5-flash
       - key: API_CORS_ORIGINS
         sync: false

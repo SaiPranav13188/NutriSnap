@@ -39,7 +39,7 @@ disagreeing about how many calories you have left.
 
 - **Node 20+** and **pnpm 10+** (`corepack enable` will do)
 - A **Supabase** project (free tier is fine)
-- An **Anthropic API key** for the vision model
+- A **free Google Gemini API key** for the vision model ([aistudio.google.com/apikey](https://aistudio.google.com/apikey) — no card required)
 - **Expo Go** on your phone, to run the mobile app without a native build
 
 ---
@@ -83,7 +83,7 @@ Copy `.env.example` and fill in each app's values:
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_ANON_KEY=<anon key>
 SUPABASE_SERVICE_ROLE_KEY=<service role key>
-ANTHROPIC_API_KEY=<your key>
+GEMINI_API_KEY=<your gemini key>
 API_CORS_ORIGINS=http://localhost:3000
 
 # apps/web/.env.local
@@ -158,10 +158,18 @@ Charts. Both pull native dependencies that are not guaranteed inside Expo Go, an
 how this app is meant to be tested. `react-native-svg` already ships inside Expo Go, so
 `WeightChart` draws its own paths and runs on a physical phone with no custom dev client.
 
-**Why food analysis uses structured outputs.** `/api/food/analyze` sends the photo with a
-Zod schema as the response format, so the model is constrained to return valid nutrition
-JSON rather than us parsing hopefully-valid text. The cost/latency knob is the `effort`
-setting in `services/api/src/ai/vision.ts` and nowhere else.
+**Why food analysis uses structured outputs.** `/api/food/analyze` sends the photo together
+with a JSON Schema generated from the same Zod schema that types the result, so the model is
+constrained to return valid nutrition JSON rather than us parsing hopefully-valid text. The
+response is still validated against that schema before it is trusted — a model is a model.
+The provider lives in `services/api/src/ai/vision.ts` and nowhere else.
+
+**About the free Gemini tier.** Google's free tier needs no card, but it is rate limited
+(roughly 15 requests a minute — the API surfaces that as a clear 429) and **Google may use
+prompts and images sent through it to improve their models**, meal photos included. That is
+fine for development. Before this holds real users' data, move to a paid tier or a provider
+that does not train on input. Swapping is a single file: `vision.ts` is the only place that
+talks to a model.
 
 **Accuracy.** Photo-based calorie estimation is approximate — ingredient identification is
 good, grams-per-ingredient is the weak point. Every estimate carries a confidence score,
