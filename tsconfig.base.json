@@ -1,6 +1,12 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
+    // tsup injects `baseUrl` during its declaration build, which TypeScript 6
+    // reports as TS5101. We do not set it ourselves and cannot remove it from
+    // tsup's internal config, so this acknowledges the deprecation rather than
+    // failing the build. Revisit when tsup stops setting it, since baseUrl is
+    // removed outright in TypeScript 7.
+    "ignoreDeprecations": "6.0",
     "target": "ES2022",
     "lib": ["ES2022"],
     "module": "ESNext",
