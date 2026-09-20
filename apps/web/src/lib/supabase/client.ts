@@ -1,6 +1,7 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
+import { supabaseUrl } from './url';
 
 /**
  * Browser-side Supabase client. Only ever uses the anon key — Row Level
@@ -8,7 +9,7 @@ import { createBrowserClient } from '@supabase/ssr';
  */
 export function createClient() {
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    supabaseUrl(),
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
 }

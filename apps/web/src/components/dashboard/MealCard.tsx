@@ -86,7 +86,7 @@ export function MealCard({ log, index, onDelete, onToggleFavorite }: MealCardPro
       </div>
 
       <div className="flex shrink-0 flex-col gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-        <button
+        <button suppressHydrationWarning
           type="button"
           onClick={() => onToggleFavorite(log)}
           aria-label={log.is_favorite ? 'Remove from favourites' : 'Save to favourites'}
@@ -97,7 +97,7 @@ export function MealCard({ log, index, onDelete, onToggleFavorite }: MealCardPro
             aria-hidden
           />
         </button>
-        <button
+        <button suppressHydrationWarning
           type="button"
           onClick={() => onDelete(log.id)}
           aria-label={`Delete ${log.name}`}

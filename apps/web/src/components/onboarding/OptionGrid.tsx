@@ -36,7 +36,7 @@ export function OptionGrid<T extends string>({
         const selected = isSelected(option.value);
 
         return (
-          <motion.button
+          <motion.button suppressHydrationWarning
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}

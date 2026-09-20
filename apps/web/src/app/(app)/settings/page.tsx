@@ -167,7 +167,7 @@ export default function SettingsPage() {
 
         <div className="mt-4 flex flex-wrap gap-2">
           {(['lose', 'maintain', 'gain'] as const).map((goal) => (
-            <button
+            <button suppressHydrationWarning
               key={goal}
               type="button"
               disabled={busy !== null}
@@ -190,7 +190,7 @@ export default function SettingsPage() {
 
         <div className="mt-4 flex gap-2">
           {(['metric', 'imperial'] as const).map((unit) => (
-            <button
+            <button suppressHydrationWarning
               key={unit}
               type="button"
               disabled={busy !== null}

@@ -30,7 +30,7 @@ export function WeekStrip({ days, targetCalories, selectedDate, onSelect }: Week
         const circumference = 2 * Math.PI * 15;
 
         return (
-          <button
+          <button suppressHydrationWarning
             key={day.day}
             type="button"
             onClick={() => onSelect(day.day)}

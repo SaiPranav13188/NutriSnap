@@ -193,7 +193,7 @@ export function ScanResult({
                     {Math.round(ingredient.calories)} kcal
                   </span>
 
-                  <button
+                  <button suppressHydrationWarning
                     type="button"
                     onClick={() => setIngredients((list) => list.filter((_, index) => index !== i))}
                     aria-label={`Remove ${ingredient.name}`}
@@ -212,7 +212,7 @@ export function ScanResult({
         <h2 className="text-sm font-medium uppercase tracking-wider text-ink-secondary">Meal</h2>
         <div className="mt-3 flex flex-wrap gap-2">
           {MEAL_TYPES.map((type) => (
-            <button
+            <button suppressHydrationWarning
               key={type}
               type="button"
               onClick={() => setMealType(mealType === type ? null : type)}
@@ -243,7 +243,7 @@ export function ScanResult({
             <GlassCard strong className="p-5">
               <div className="flex items-center justify-between">
                 <h2 className="font-medium">What did we get wrong?</h2>
-                <button
+                <button suppressHydrationWarning
                   type="button"
                   onClick={() => setShowFix(false)}
                   aria-label="Close correction box"
@@ -253,7 +253,7 @@ export function ScanResult({
                 </button>
               </div>
 
-              <textarea
+              <textarea suppressHydrationWarning
                 value={correction}
                 onChange={(e) => setCorrection(e.target.value)}
                 maxLength={500}
@@ -337,7 +337,7 @@ function StepperButton({
   label: string;
 }) {
   return (
-    <motion.button
+    <motion.button suppressHydrationWarning
       type="button"
       onClick={onClick}
       disabled={disabled}

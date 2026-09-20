@@ -204,7 +204,7 @@ function ScanPage() {
 
       <div className="flex gap-1.5 overflow-x-auto pb-1">
         {MODES.map(({ value, label, icon: Icon }) => (
-          <button
+          <button suppressHydrationWarning
             key={value}
             type="button"
             onClick={() => {
@@ -262,7 +262,7 @@ function ScanPage() {
                 {analyzing && <ScanningOverlay label={mode === 'label' ? 'Reading the label…' : undefined} />}
               </div>
 
-              <input
+              <input suppressHydrationWarning
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
@@ -311,7 +311,7 @@ function ScanPage() {
             <GlassCard className="p-6">
               <label className="block">
                 <span className="text-sm font-medium">What did you eat?</span>
-                <textarea
+                <textarea suppressHydrationWarning
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={4}
@@ -342,7 +342,7 @@ function ScanPage() {
             <GlassCard className="p-6">
               <label className="block">
                 <span className="text-sm font-medium">Barcode number</span>
-                <input
+                <input suppressHydrationWarning
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value.replace(/\D/g, ''))}
                   inputMode="numeric"

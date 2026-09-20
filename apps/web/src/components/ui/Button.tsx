@@ -42,7 +42,7 @@ export function Button({
   const isDisabled = disabled || loading;
 
   return (
-    <motion.button
+    <motion.button suppressHydrationWarning
       // Plan section 4: press scales to 0.96.
       whileTap={isDisabled ? undefined : { scale: 0.96 }}
       whileHover={isDisabled ? undefined : { scale: 1.015 }}

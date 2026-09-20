@@ -113,7 +113,7 @@ export default function OnboardingPage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col px-6 pb-10 pt-6">
       <header className="flex items-center gap-4">
-        <button
+        <button suppressHydrationWarning
           type="button"
           onClick={goBack}
           aria-label="Go back"
@@ -196,7 +196,7 @@ export default function OnboardingPage() {
           )}
 
           {step.optional && (
-            <button
+            <button suppressHydrationWarning
               type="button"
               onClick={goNext}
               className="text-sm text-ink-tertiary transition-colors hover:text-ink-secondary"
@@ -255,7 +255,7 @@ function StepBody({ id, answers, set, previewTargets, onCraftingDone }: StepBody
 
     case 'date_of_birth':
       return (
-        <input
+        <input suppressHydrationWarning
           type="date"
           value={answers.date_of_birth ?? ''}
           max={new Date().toISOString().slice(0, 10)}
@@ -354,7 +354,7 @@ function StepBody({ id, answers, set, previewTargets, onCraftingDone }: StepBody
 
     case 'target_date':
       return (
-        <input
+        <input suppressHydrationWarning
           type="date"
           value={answers.target_date ?? ''}
           min={new Date().toISOString().slice(0, 10)}
@@ -413,7 +413,7 @@ function StepBody({ id, answers, set, previewTargets, onCraftingDone }: StepBody
           {COMMON_ALLERGENS.map((allergen) => {
             const active = selected.includes(allergen);
             return (
-              <button
+              <button suppressHydrationWarning
                 key={allergen}
                 type="button"
                 onClick={() => toggle(allergen)}

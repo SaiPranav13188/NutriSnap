@@ -6,6 +6,12 @@ import { colors } from '@nutrisnap/ui';
 import { supabase } from '../src/lib/supabase';
 import { api } from '../src/lib/api';
 import { clearStoredAnswers, readStoredAnswers } from '../src/lib/session';
+import {
+  ENABLED_PROVIDERS,
+  OAuthCancelled,
+  signInWithProvider,
+  type OAuthProvider,
+} from '../src/lib/oauth';
 import { Button, Card, ErrorNote, Screen } from '../src/components/ui';
 
 export default function SignIn() {
@@ -18,6 +24,7 @@ export default function SignIn() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
   const [loading, setLoading] = useState(false);
 
   /** Flush the pre-signup quiz answers now that an account exists. */
@@ -29,6 +36,24 @@ export default function SignIn() {
       await clearStoredAnswers();
     } catch {
       // Keep them for the dashboard to retry rather than losing the quiz.
+    }
+  }
+
+  async function handleOAuth(provider: OAuthProvider) {
+    setError(null);
+    setNotice(null);
+    setOauthBusy(provider);
+    try {
+      await signInWithProvider(provider);
+      await savePendingOnboarding();
+      router.replace('/(tabs)');
+    } catch (caught) {
+      // Backing out of the browser sheet is a normal thing to do, not an error
+      // worth shouting about.
+      if (caught instanceof OAuthCancelled) return;
+      setError(caught instanceof Error ? caught.message : 'Could not sign in with that provider.');
+    } finally {
+      setOauthBusy(null);
     }
   }
 
@@ -94,6 +119,39 @@ export default function SignIn() {
                     : 'Sign in to pick up where you left off.'}
                 </Text>
               </View>
+
+              {ENABLED_PROVIDERS.length > 0 && (
+                <>
+                  <View style={{ gap: 10 }}>
+                    {ENABLED_PROVIDERS.includes('google') && (
+                      <Button
+                        variant="glass"
+                        loading={oauthBusy === 'google'}
+                        disabled={oauthBusy !== null || loading}
+                        onPress={() => handleOAuth('google')}
+                      >
+                        Continue with Google
+                      </Button>
+                    )}
+                    {ENABLED_PROVIDERS.includes('apple') && (
+                      <Button
+                        variant="glass"
+                        loading={oauthBusy === 'apple'}
+                        disabled={oauthBusy !== null || loading}
+                        onPress={() => handleOAuth('apple')}
+                      >
+                        Continue with Apple
+                      </Button>
+                    )}
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12, letterSpacing: 1 }}>OR</Text>
+                    <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+                  </View>
+                </>
+              )}
 
               <View style={{ gap: 10 }}>
                 <TextInput

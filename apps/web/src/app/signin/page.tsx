@@ -11,6 +11,22 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { readStoredAnswers, clearStoredAnswers } from '@/lib/onboardingStorage';
 import { api } from '@/lib/api';
 
+/**
+ * Which social logins to offer, e.g. NEXT_PUBLIC_OAUTH_PROVIDERS="google,apple".
+ *
+ * Off by default, because a provider that is not configured in the Supabase
+ * dashboard does not fail gracefully: signInWithOAuth redirects the browser
+ * straight to Supabase, which answers with a raw JSON error page
+ * ("Unsupported provider: provider is not enabled"). There is no way to catch
+ * that from here — the navigation has already happened. Showing the button
+ * only once the provider actually works is the difference between a dead end
+ * and a working sign-in page.
+ */
+const ENABLED_PROVIDERS = (process.env.NEXT_PUBLIC_OAUTH_PROVIDERS ?? '')
+  .split(',')
+  .map((p) => p.trim().toLowerCase())
+  .filter(Boolean);
+
 function SignInForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -53,9 +69,18 @@ function SignInForm() {
         const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
         if (signUpError) throw signUpError;
 
-        // With email confirmation on, there is no session yet.
+        // No session comes back in two quite different cases, and Supabase
+        // deliberately does not distinguish them (it will not reveal whether
+        // an address is already registered):
+        //   1. the account is new and awaiting email confirmation, or
+        //   2. the address is already registered.
+        // Saying only "check your inbox" strands anyone in case 2 waiting for
+        // an email that is never coming, so name both possibilities.
         if (!data.session) {
-          setNotice('Check your inbox to confirm your email, then sign in.');
+          setNotice(
+            'If that email is new, check your inbox to confirm it. ' +
+              'If you already have an account, just sign in below.',
+          );
           setMode('signin');
           return;
         }
@@ -101,32 +126,40 @@ function SignInForm() {
               : 'Sign in to pick up where you left off.'}
           </p>
 
-          <div className="mt-6 flex flex-col gap-2">
-            <Button variant="glass" fullWidth onClick={() => handleOAuth('google')} type="button">
-              Continue with Google
-            </Button>
-            <Button variant="glass" fullWidth onClick={() => handleOAuth('apple')} type="button">
-              Continue with Apple
-            </Button>
-          </div>
+          {ENABLED_PROVIDERS.length > 0 && (
+            <>
+              <div className="mt-6 flex flex-col gap-2">
+                {ENABLED_PROVIDERS.includes('google') && (
+                  <Button variant="glass" fullWidth onClick={() => handleOAuth('google')} type="button">
+                    Continue with Google
+                  </Button>
+                )}
+                {ENABLED_PROVIDERS.includes('apple') && (
+                  <Button variant="glass" fullWidth onClick={() => handleOAuth('apple')} type="button">
+                    Continue with Apple
+                  </Button>
+                )}
+              </div>
 
-          <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-wider text-ink-tertiary">
-            <span className="h-px flex-1 bg-glass-border" />
-            or
-            <span className="h-px flex-1 bg-glass-border" />
-          </div>
+              <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-wider text-ink-tertiary">
+                <span className="h-px flex-1 bg-glass-border" />
+                or
+                <span className="h-px flex-1 bg-glass-border" />
+              </div>
+            </>
+          )}
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
                 Email
               </span>
-              <input
+              <input suppressHydrationWarning
                 type="email"
                 required
                 autoComplete="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setNotice(null); setError(null); }}
                 className="h-12 rounded-2xl border border-glass-border bg-white/[0.04] px-4 text-[15px] outline-none transition-colors focus:border-accent-lime/50"
                 placeholder="you@example.com"
               />
@@ -136,13 +169,13 @@ function SignInForm() {
               <span className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
                 Password
               </span>
-              <input
+              <input suppressHydrationWarning
                 type="password"
                 required
                 minLength={6}
                 autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setNotice(null); setError(null); }}
                 className="h-12 rounded-2xl border border-glass-border bg-white/[0.04] px-4 text-[15px] outline-none transition-colors focus:border-accent-lime/50"
                 placeholder="At least 6 characters"
               />
@@ -171,7 +204,7 @@ function SignInForm() {
             </Button>
           </form>
 
-          <button
+          <button suppressHydrationWarning
             type="button"
             onClick={() => {
               setMode(mode === 'signup' ? 'signin' : 'signup');

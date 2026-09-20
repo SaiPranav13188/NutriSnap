@@ -115,7 +115,7 @@ export default function ProgressPage() {
 
           {showWeightForm ? (
             <form onSubmit={handleLogWeight} className="mt-4 flex gap-2">
-              <input
+              <input suppressHydrationWarning
                 type="number"
                 step="0.1"
                 min={25}
@@ -185,7 +185,7 @@ export default function ProgressPage() {
             aria-label="Chart range"
           >
             {PROGRESS_RANGES.map((option) => (
-              <button
+              <button suppressHydrationWarning
                 key={option.value}
                 type="button"
                 onClick={() => setRange(option.value)}

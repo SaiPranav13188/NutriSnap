@@ -20,9 +20,25 @@ import {
  * photos, move to a paid tier or a provider that does not train on input.
  */
 
-const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-
 const MODEL = env.GEMINI_VISION_MODEL;
+
+/**
+ * Built on first use rather than at import, so the API can start and serve
+ * every other route without a Gemini key configured.
+ */
+let client: GoogleGenAI | null = null;
+
+function getClient(): GoogleGenAI {
+  if (!env.GEMINI_API_KEY) {
+    throw new HttpError(
+      503,
+      'Food analysis is not set up yet. Add GEMINI_API_KEY to services/api/.env and restart the API.',
+      'ai_not_configured',
+    );
+  }
+  client ??= new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+  return client;
+}
 
 /**
  * Gemini accepts plain JSON Schema for structured output, and Zod 4 emits
@@ -125,7 +141,7 @@ async function generateStructured<T>(params: {
   let raw: string | undefined;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await getClient().models.generateContent({
       model: MODEL,
       contents: [{ role: 'user', parts: params.parts }],
       config: {

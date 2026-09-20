@@ -79,7 +79,7 @@ export function MeasurePicker({
     <div className="flex flex-col items-center gap-7">
       <div className="inline-flex rounded-full border border-glass-border p-1">
         {(['metric', 'imperial'] as const).map((unit) => (
-          <button
+          <button suppressHydrationWarning
             key={unit}
             type="button"
             onClick={() => onUnitsChange(unit)}
@@ -99,7 +99,7 @@ export function MeasurePicker({
       </div>
 
       <div className="w-full px-1">
-        <input
+        <input suppressHydrationWarning
           type="range"
           min={sliderProps.min}
           max={sliderProps.max}
