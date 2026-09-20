@@ -1,0 +1,18 @@
+# NutriSnap — non-negotiable project rules
+
+- The full spec lives in NutriSnap_project_plan.md at the repo root. Read it before making
+  architectural decisions; it is the source of truth for features, schema, and UX direction.
+- Always put shared calorie/macro logic in packages/core. Never duplicate or re-implement
+  calculateTargets(), BMR, TDEE or macro-split math inside apps/web, apps/mobile or services/api.
+- Use TypeScript strict mode everywhere. No `any` without an explicit justification comment.
+- Every Supabase table must have Row Level Security enabled, with policies scoped to
+  `auth.uid() = user_id`, before a migration is considered done.
+- Never hardcode API keys or secrets. Always read them from environment variables, and add
+  any new variable to .env.example.
+- The SUPABASE_SERVICE_ROLE_KEY may only be used inside services/api. It must never appear in
+  apps/web client components or anywhere in apps/mobile.
+- Match the "bio-glass" dark futuristic theme described in NutriSnap_project_plan.md section 4
+  for every screen: deep charcoal background, frosted glass cards, a single lime -> cyan accent
+  gradient reserved for rings and CTAs, rounded-2xl corners, large confident numerals.
+- Calorie and macro targets are general wellness guidance, not medical advice. Keep the
+  disclaimer visible in settings and never present output as clinical nutrition therapy.

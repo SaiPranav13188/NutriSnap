@@ -1,0 +1,14 @@
+packages:
+  - "apps/*"
+  - "services/*"
+  - "packages/*"
+
+# Native postinstall scripts we explicitly trust.
+strictDepBuilds: false
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - "@swc/core"
+  - unrs-resolver
+
