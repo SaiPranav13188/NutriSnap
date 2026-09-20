@@ -147,6 +147,19 @@ pnpm --filter @nutrisnap/mobile exec expo export --platform android
 
 ## Notes on the build
 
+**If `expo start` fails with "Cannot find module .../@react-native/dev-middleware/dist/index.js".**
+pnpm sometimes writes an incomplete nested copy of that package under
+`node_modules/@expo/cli/node_modules/` — the folder exists but its `dist/` does
+not. A complete copy is already at the workspace root, so deleting the broken
+nested one lets Node resolve up to it:
+
+```powershell
+Remove-Item -Recurse -Force "node_modules/@expo/cli/node_modules/@react-native/dev-middleware"
+```
+
+Note that `expo export` succeeds even when this is broken — only the dev
+server needs it, which is why a passing bundle check does not rule it out.
+
 **Why the monorepo hoists.** `pnpm-workspace.yaml` sets `nodeLinker: hoisted`. Expo's Metro
 bundler resolves transitive peers by walking `node_modules` directories, and pnpm's default
 isolated store hides them — the bundle fails on imports that nothing declared directly. A
