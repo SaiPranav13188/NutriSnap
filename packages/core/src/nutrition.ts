@@ -16,8 +16,14 @@ export const EMPTY_TOTALS: MacroTotals = {
 
 const n = (v: number | null | undefined): number => (typeof v === 'number' && !Number.isNaN(v) ? v : 0);
 
+/**
+ * Every macro field as it may actually arrive from Postgres: absent, null, or
+ * a number. `food_logs` allows nulls on the optional micros.
+ */
+export type PartialTotals = { [K in keyof MacroTotals]?: number | null };
+
 /** Sum a day's logs into the single totals object the rings render from. */
-export function sumTotals(logs: Array<Partial<MacroTotals>>): MacroTotals {
+export function sumTotals(logs: PartialTotals[]): MacroTotals {
   return logs.reduce<MacroTotals>(
     (acc, log) => ({
       calories: acc.calories + n(log.calories),

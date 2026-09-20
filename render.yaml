@@ -1,0 +1,31 @@
+# Render blueprint for the NutriSnap API.
+# Connect the repo in the Render dashboard and it will pick this up.
+#
+# Secrets are marked sync:false — set them in the Render dashboard, never here.
+services:
+  - type: web
+    name: nutrisnap-api
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: .
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @nutrisnap/core build && pnpm --filter @nutrisnap/api build
+    startCommand: pnpm --filter @nutrisnap/api start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_VISION_MODEL
+        value: claude-opus-5
+      - key: API_CORS_ORIGINS
+        sync: false
