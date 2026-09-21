@@ -25,6 +25,7 @@ import {
   DEFAULT_REMINDERS,
   applyReminders,
   readReminderSettings,
+  remindersSupported,
   type ReminderSettings,
 } from '../../src/lib/reminders';
 
@@ -56,7 +57,9 @@ export default function Settings() {
     if (!ok) {
       setReminders({ ...next, mealEnabled: false, weighInEnabled: false });
       setReminderNote(
-        'Notifications are blocked for NutriSnap. Turn them on in your phone settings first.',
+        remindersSupported
+          ? 'Notifications are blocked for NutriSnap. Turn them on in your phone settings first.'
+          : 'Reminders need a development build. Expo Go cannot schedule them on Android.',
       );
     }
   }
@@ -253,6 +256,7 @@ export default function Settings() {
               </View>
               <Switch
                 value={reminders.mealEnabled}
+                disabled={!remindersSupported}
                 onValueChange={(value) =>
                   void updateReminders({ ...reminders, mealEnabled: value })
                 }
@@ -277,6 +281,7 @@ export default function Settings() {
               </View>
               <Switch
                 value={reminders.weighInEnabled}
+                disabled={!remindersSupported}
                 onValueChange={(value) =>
                   void updateReminders({ ...reminders, weighInEnabled: value })
                 }
@@ -292,8 +297,9 @@ export default function Settings() {
             )}
 
             <Text style={{ color: c.text.tertiary, fontSize: 12, lineHeight: 18 }}>
-              Reminders are set on this phone only. Nothing is scheduled on a server and no push
-              token is registered.
+              {remindersSupported
+                ? 'Reminders are set on this phone only. Nothing is scheduled on a server and no push token is registered.'
+                : 'Expo Go cannot schedule notifications on Android. These switches will work in a development build; everything else in the app is unaffected.'}
             </Text>
           </Card>
 

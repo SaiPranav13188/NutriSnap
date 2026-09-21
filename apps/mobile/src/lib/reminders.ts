@@ -1,4 +1,4 @@
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -6,14 +6,60 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * Local reminders: a nudge to log dinner, and a weekly weigh-in prompt.
  *
  * Local only — nothing is scheduled on a server and no push token is
- * registered. Everything here is an alarm the phone sets for itself, which is
- * the whole requirement: "remind me at 8pm" needs no backend.
+ * registered. Everything here is an alarm the phone sets for itself.
  *
- * Expo Go caveat: remote push was removed from Expo Go on Android, and local
- * scheduled notifications are the part that still works there. They are fully
- * reliable in a development build. `ensurePermission` returning false is the
- * honest signal when the environment cannot deliver them.
+ * The awkward part is that expo-notifications cannot be imported at all in
+ * Expo Go on Android. Its index pulls in DevicePushTokenAutoRegistration,
+ * which registers a push-token listener as a side effect of being loaded, and
+ * since SDK 53 that throws in Expo Go — before any of this code runs, and
+ * whether or not push is ever used. A static import therefore takes down every
+ * screen that imports this file.
+ *
+ * So the module is loaded lazily, only once something actually needs it, and
+ * only outside Expo Go. `remindersSupported` lets the UI say why the toggles
+ * are off rather than offering a switch that cannot work.
  */
+
+/**
+ * True in a development or production build, false in Expo Go.
+ *
+ * `appOwnership` is deprecated in favour of `executionEnvironment`, but
+ * executionEnvironment reports "storeClient" for Expo Go AND for a dev client,
+ * which is exactly the distinction that matters here. appOwnership is the only
+ * signal that separates the two.
+ */
+export const remindersSupported = Constants.appOwnership !== 'expo';
+
+type NotificationsModule = typeof import('expo-notifications');
+
+let modulePromise: Promise<NotificationsModule | null> | null = null;
+
+/**
+ * Load expo-notifications, or return null where it cannot be loaded.
+ *
+ * The try/catch is not redundant with the Expo Go check: it is the backstop
+ * for any other environment where importing the module throws, so a reminder
+ * toggle can never crash the app the way a static import did.
+ */
+async function loadNotifications(): Promise<NotificationsModule | null> {
+  if (!remindersSupported) return null;
+
+  modulePromise ??= import('expo-notifications')
+    .then((mod) => {
+      mod.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+        }),
+      });
+      return mod;
+    })
+    .catch(() => null);
+
+  return modulePromise;
+}
 
 const MEAL_REMINDER_ID = 'nutrisnap.reminder.meal';
 const WEIGH_IN_REMINDER_ID = 'nutrisnap.reminder.weighin';
@@ -38,15 +84,6 @@ export const DEFAULT_REMINDERS: ReminderSettings = {
   weighInWeekday: 2, // Monday
 };
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
-
 export async function readReminderSettings(): Promise<ReminderSettings> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -68,6 +105,9 @@ async function storeReminderSettings(settings: ReminderSettings): Promise<void> 
 
 /** Ask once, and report honestly if the answer is no. */
 export async function ensurePermission(): Promise<boolean> {
+  const Notifications = await loadNotifications();
+  if (!Notifications) return false;
+
   const existing = await Notifications.getPermissionsAsync();
   if (existing.granted) return true;
   if (!existing.canAskAgain) return false;
@@ -82,13 +122,29 @@ export async function ensurePermission(): Promise<boolean> {
  * Cancels first and re-creates rather than trying to patch: the set is two
  * alarms, so rebuilding is cheaper than reasoning about what changed, and it
  * cannot leave an orphan firing at the old time.
+ *
+ * Returns false when the reminders could not be scheduled, so the caller can
+ * put the toggle back down instead of promising something that will not come.
  */
 export async function applyReminders(settings: ReminderSettings): Promise<boolean> {
-  const needsPermission = settings.mealEnabled || settings.weighInEnabled;
+  const wantsAny = settings.mealEnabled || settings.weighInEnabled;
 
-  if (needsPermission && !(await ensurePermission())) {
-    return false;
+  // Turning everything off is worth persisting even where scheduling is
+  // impossible, so the stored preference matches what the user chose.
+  if (!wantsAny) {
+    const Notifications = await loadNotifications();
+    if (Notifications) {
+      await Notifications.cancelScheduledNotificationAsync(MEAL_REMINDER_ID).catch(() => {});
+      await Notifications.cancelScheduledNotificationAsync(WEIGH_IN_REMINDER_ID).catch(() => {});
+    }
+    await storeReminderSettings(settings);
+    return true;
   }
+
+  const Notifications = await loadNotifications();
+  if (!Notifications) return false;
+
+  if (!(await ensurePermission())) return false;
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('reminders', {
@@ -139,6 +195,9 @@ export async function applyReminders(settings: ReminderSettings): Promise<boolea
 
 /** What the OS actually has scheduled — used to verify, not to guess. */
 export async function scheduledCount(): Promise<number> {
+  const Notifications = await loadNotifications();
+  if (!Notifications) return 0;
+
   try {
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     return scheduled.length;
