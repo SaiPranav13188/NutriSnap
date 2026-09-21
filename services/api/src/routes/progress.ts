@@ -95,16 +95,42 @@ export async function progressRoutes(app: FastifyInstance): Promise<void> {
 
     const targets = await getOrCreateTargets(request.db, userId);
 
+    // Stored targets carry the TDEE that was in force from each date, so the
+    // history of the estimate is already on disk — the adaptive recompute
+    // writes a new row whenever it moves.
+    const expenditureResult = await request.db
+      .from('daily_targets')
+      .select('effective_date, tdee')
+      .eq('user_id', userId)
+      .not('tdee', 'is', null)
+      .order('effective_date', { ascending: true });
+
+    const expenditureSeries: SeriesPoint[] = (expenditureResult.data ?? []).map(
+      (row: { effective_date: string; tdee: number | null }) => ({
+        date: row.effective_date,
+        value: Number(row.tdee ?? 0),
+      }),
+    );
+
     const currentWeight = rawWeights.at(-1)?.value ?? profile.current_weight_kg ?? null;
     const startWeight = rawWeights[0]?.value ?? profile.current_weight_kg ?? null;
 
     return {
       range,
+      // Height and goal never change inside a range, but BMI and the goal
+      // copy need them and a second round trip for two fields is wasteful.
+      profile: {
+        height_cm: profile.height_cm,
+        goal: profile.goal,
+        units: profile.units ?? 'metric',
+      },
       weight: {
         series: weightSeries,
         trend_line: movingAverage(weightSeries, 7),
         current_kg: currentWeight,
         start_kg: startWeight,
+        /** Drives the "next weigh-in" countdown. */
+        last_logged_on: rawWeights.at(-1)?.date ?? null,
         goal_kg: profile.goal_weight_kg,
         goal_progress:
           startWeight !== null && currentWeight !== null && profile.goal_weight_kg !== null
@@ -133,6 +159,10 @@ export async function progressRoutes(app: FastifyInstance): Promise<void> {
         week_over_week: weekOverWeekChange(loggedCalorieDays),
         target: targets?.calories ?? null,
         tdee: targets?.tdee ?? null,
+      },
+      expenditure: {
+        series: expenditureSeries,
+        current: targets?.tdee ?? null,
       },
       streak: streakResult.data ?? { current_streak: 0, longest_streak: 0, last_logged_date: null },
     };

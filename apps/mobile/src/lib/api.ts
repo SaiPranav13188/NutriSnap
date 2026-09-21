@@ -103,11 +103,17 @@ export interface SeriesPoint {
 
 export interface ProgressResponse {
   range: ProgressRange;
+  profile: {
+    height_cm: number | null;
+    goal: 'lose' | 'maintain' | 'gain' | null;
+    units: 'metric' | 'imperial';
+  };
   weight: {
     series: SeriesPoint[];
     trend_line: SeriesPoint[];
     current_kg: number | null;
     start_kg: number | null;
+    last_logged_on: string | null;
     goal_kg: number | null;
     goal_progress: number | null;
     projected_goal_date: string | null;
@@ -121,6 +127,10 @@ export interface ProgressResponse {
     week_over_week: { thisWeekAvg: number; lastWeekAvg: number; percentChange: number };
     target: number | null;
     tdee: number | null;
+  };
+  expenditure: {
+    series: SeriesPoint[];
+    current: number | null;
   };
   streak: Streak;
 }
