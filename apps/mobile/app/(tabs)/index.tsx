@@ -314,6 +314,9 @@ export default function Dashboard() {
               logs.map((log, i) => (
                 <Animated.View key={log.id} entering={FadeInDown.delay(i * 60)}>
                   <Pressable
+                    onPress={() =>
+                      router.push({ pathname: '/log/[id]', params: { id: log.id } })
+                    }
                     onLongPress={async () => {
                       try {
                         await api.deleteLog(log.id);
@@ -323,7 +326,8 @@ export default function Dashboard() {
                       }
                     }}
                     accessibilityRole="button"
-                    accessibilityHint="Long press to delete this meal"
+                    accessibilityLabel={`${log.name}, ${Math.round(log.calories)} calories`}
+                    accessibilityHint="Opens the full report. Long press to delete."
                   >
                     <Card
                       style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}

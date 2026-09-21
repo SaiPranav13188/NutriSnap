@@ -92,6 +92,29 @@ export async function logRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Edit a log — the serving stepper and ingredient edits both land here. */
+  /**
+   * One meal in full, for the detail screen a log row opens.
+   *
+   * The dashboard already holds the day's logs, but reading the row from the
+   * list would make the screen unopenable from anywhere else — a notification,
+   * a deep link, or a reload once the list has moved on to another date.
+   */
+  app.get('/api/logs/:id', async (request) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+
+    const { data, error } = await request.db
+      .from('food_logs')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', request.user.id)
+      .maybeSingle();
+
+    if (error) throw new HttpError(500, `Could not load that meal: ${error.message}`, 'log_read_failed');
+    if (!data) throw new HttpError(404, 'Meal not found.', 'log_not_found');
+
+    return { log: data as FoodLog };
+  });
+
   app.patch('/api/logs/:id', async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const patch = logBody.partial().parse(request.body);

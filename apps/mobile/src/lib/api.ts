@@ -165,6 +165,8 @@ export const api = {
 
   getRecent: (limit = 20) => request<{ logs: FoodLog[] }>(`/api/logs/recent?limit=${limit}`),
 
+  getLog: (id: string) => request<{ log: FoodLog }>(`/api/logs/${id}`),
+
   createLog: (body: Record<string, unknown>) => post<{ log: FoodLog }>('/api/logs', body),
 
   updateLog: (id: string, body: Record<string, unknown>) =>
