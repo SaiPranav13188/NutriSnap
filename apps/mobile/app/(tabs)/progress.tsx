@@ -87,16 +87,9 @@ export default function Progress() {
     }
   }
 
-  if (loading) {
-    return (
-      <Screen>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={c.accent.lime} />
-        </View>
-      </Screen>
-    );
-  }
-
+  // Derived values live above the loading early-return: a hook that runs
+  // only once data has arrived changes the hook count between renders,
+  // which React rejects outright. Each one already tolerates null data.
   const weight = data?.weight;
   const calories = data?.calories;
   const wow = calories?.week_over_week;
@@ -160,6 +153,17 @@ export default function Progress() {
     const burned = (calories?.tdee ?? 0) * elapsed;
     return { consumed: week.total, burned, net: week.total - burned };
   }, [week, calories?.tdee]);
+
+  if (loading) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={c.accent.lime} />
+        </View>
+      </Screen>
+    );
+  }
+
   const chartWidth = width - 40 - 36; // screen padding + card padding
 
   return (
