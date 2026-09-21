@@ -101,6 +101,37 @@ export interface SeriesPoint {
   value: number;
 }
 
+export interface WaterLog {
+  id: string;
+  amount_ml: number;
+  logged_at: string;
+  logged_on: string;
+}
+
+export interface ExerciseLog {
+  id: string;
+  name: string;
+  kind: string;
+  duration_min: number;
+  calories_burned: number;
+  intensity: 'light' | 'moderate' | 'vigorous' | null;
+  notes: string | null;
+  source: 'manual' | 'estimated' | 'imported';
+  logged_at: string;
+  logged_on: string;
+}
+
+export interface ProgressPhoto {
+  id: string;
+  storage_path: string;
+  weight_kg: number | null;
+  note: string | null;
+  taken_at: string;
+  taken_on: string;
+  /** Signed, and therefore renderable. Null when the object has gone missing. */
+  url: string | null;
+}
+
 export interface ProgressResponse {
   range: ProgressRange;
   profile: {
@@ -175,6 +206,9 @@ export const api = {
 
   getRecent: (limit = 20) => request<{ logs: FoodLog[] }>(`/api/logs/recent?limit=${limit}`),
 
+  getFavorites: (limit = 20) =>
+    request<{ logs: FoodLog[] }>(`/api/logs/recent?limit=${limit}&favorites_only=true`),
+
   getLog: (id: string) => request<{ log: FoodLog }>(`/api/logs/${id}`),
 
   createLog: (body: Record<string, unknown>) => post<{ log: FoodLog }>('/api/logs', body),
@@ -192,4 +226,52 @@ export const api = {
   getProgress: (range: ProgressRange) => request<ProgressResponse>(`/api/progress?range=${range}`),
 
   exportData: () => request<Record<string, unknown>>('/api/export'),
+
+  // --- Water -------------------------------------------------------------
+
+  getWater: (date?: string) =>
+    request<{ date: string; logs: WaterLog[]; total_ml: number }>(
+      `/api/water${date ? `?date=${date}` : ''}`,
+    ),
+
+  addWater: (amount_ml: number) =>
+    post<{ water_log: WaterLog }>('/api/water', { amount_ml }),
+
+  undoWater: (date?: string) =>
+    request<void>(`/api/water/last${date ? `?date=${date}` : ''}`, { method: 'DELETE' }),
+
+  // --- Exercise ----------------------------------------------------------
+
+  getExercise: (date?: string) =>
+    request<{
+      date: string;
+      logs: ExerciseLog[];
+      total_calories: number;
+      total_minutes: number;
+    }>(`/api/exercise${date ? `?date=${date}` : ''}`),
+
+  addExercise: (body: Record<string, unknown>) =>
+    post<{ exercise_log: ExerciseLog }>('/api/exercise', body),
+
+  deleteExercise: (id: string) => request<void>(`/api/exercise/${id}`, { method: 'DELETE' }),
+
+  // --- Progress photos ---------------------------------------------------
+
+  getProgressPhotos: () => request<{ photos: ProgressPhoto[] }>('/api/progress/photos'),
+
+  addProgressPhoto: (body: {
+    image: string;
+    media_type?: string;
+    weight_kg?: number | null;
+    note?: string | null;
+  }) => post<{ photo: ProgressPhoto }>('/api/progress/photos', body),
+
+  deleteProgressPhoto: (id: string) =>
+    request<void>(`/api/progress/photos/${id}`, { method: 'DELETE' }),
+
+  // --- Coach -------------------------------------------------------------
+
+  getCoachPrompts: () => request<{ prompts: string[] }>('/api/coach/prompts'),
+
+  askCoach: (question: string) => post<{ answer: string }>('/api/coach/ask', { question }),
 };

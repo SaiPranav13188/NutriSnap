@@ -16,6 +16,7 @@ import {
   describeDate,
   healthScore,
   microTargets,
+  waterTarget,
   ringProgress,
   todayKey,
   type DailyTarget,
@@ -34,6 +35,8 @@ import {
 } from '../../src/components/ui';
 import { ProgressRing } from '../../src/components/ProgressRing';
 import { DateStrip } from '../../src/components/DateStrip';
+import { WaterCard } from '../../src/components/WaterCard';
+import { FavouritesStrip } from '../../src/components/FavouritesStrip';
 import { ThemeToggle } from '../../src/components/ThemeToggle';
 import { useColors } from '../../src/lib/theme';
 import { clearStoredAnswers, readStoredAnswers } from '../../src/lib/session';
@@ -138,6 +141,10 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [week, setWeek] = useState<DayTotals[]>([]);
   const [streak, setStreak] = useState(0);
+  const [waterMl, setWaterMl] = useState(0);
+  /** Drives the water goal, which scales with body weight. */
+  const [profileWeightKg, setProfileWeightKg] = useState<number | null>(null);
+  const [favourites, setFavourites] = useState<FoodLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,14 +175,24 @@ export default function Dashboard() {
         setLogs(day.logs);
 
         // 90 days of history feeds the scrollable strip's completion rings.
-        const [history, streakData] = await Promise.allSettled([
+        // All of these decorate the day rather than constituting it, so they
+        // are allowed to fail without taking the screen down.
+        const [history, streakData, water, favs, profile] = await Promise.allSettled([
           api.getWeek(90),
           api.getStreak(),
+          api.getWater(forDate),
+          api.getFavorites(12),
+          api.getProfile(),
         ]);
 
         if (history.status === 'fulfilled') setWeek(history.value.days);
         if (streakData.status === 'fulfilled') {
           setStreak(streakData.value.streak.current_streak);
+        }
+        if (water.status === 'fulfilled') setWaterMl(water.value.total_ml);
+        if (favs.status === 'fulfilled') setFavourites(favs.value.logs);
+        if (profile.status === 'fulfilled') {
+          setProfileWeightKg(profile.value.profile.current_weight_kg ?? null);
         }
       } catch (caught) {
         setError(caught instanceof ApiError ? caught.message : 'Could not load your day.');
@@ -212,6 +229,7 @@ export default function Dashboard() {
   // Fibre, sugar and sodium have no stored goals — they are derived from the
   // calorie target, so they stay correct after a plan change.
   const micro = microTargets(targets?.calories ?? 0);
+  const waterGoalMl = waterTarget(profileWeightKg);
   const health = healthScore(totals, targets);
   const scoreColor =
     health.score >= 8 ? c.state.success : health.score >= 5 ? c.state.warning : c.state.danger;
@@ -470,15 +488,66 @@ export default function Dashboard() {
                       </View>
                     </Card>
                   </View>
+
+                  {/* Page three: water. */}
+                  <View style={{ width, paddingHorizontal: 20 }}>
+                    <WaterCard
+                      totalMl={waterMl}
+                      targetMl={waterGoalMl}
+                      units="metric"
+                      onChange={() => void load(date)}
+                      onError={setError}
+                    />
+                  </View>
                 </ScrollView>
 
-                <PagerDots count={2} active={page} />
+                <PagerDots count={3} active={page} />
               </View>
 
-              <View style={{ paddingHorizontal: 20 }}>
+              <View style={{ paddingHorizontal: 20, gap: 10 }}>
                 <Button onPress={() => router.push('/(tabs)/scan')}>Scan a meal</Button>
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {(
+                    [
+                      { label: 'Movement', icon: '\uD83C\uDFC3', href: '/exercise' },
+                      { label: 'Coach', icon: '\uD83D\uDCAC', href: '/coach' },
+                    ] as const
+                  ).map((action) => (
+                    <Pressable
+                      key={action.label}
+                      onPress={() => router.push(action.href)}
+                      accessibilityRole="button"
+                      style={{
+                        flex: 1,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 8,
+                        paddingVertical: 14,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: c.glass.border,
+                        backgroundColor: c.glass.DEFAULT,
+                      }}
+                    >
+                      <Text style={{ fontSize: 15 }}>{action.icon}</Text>
+                      <Text style={{ color: c.text.primary, fontSize: 14, fontWeight: '600' }}>
+                        {action.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             </>
+          )}
+
+          {date === todayKey() && (
+            <FavouritesStrip
+              favourites={favourites}
+              onLogged={() => void load(date)}
+              onError={setError}
+            />
           )}
 
           <Text

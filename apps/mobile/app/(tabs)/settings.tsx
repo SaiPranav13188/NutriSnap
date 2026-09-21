@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Share, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Share,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -13,6 +21,12 @@ import { api, ApiError } from '../../src/lib/api';
 import { supabase } from '../../src/lib/supabase';
 import { Button, Card, ErrorNote, Screen } from '../../src/components/ui';
 import { useColors } from '../../src/lib/theme';
+import {
+  DEFAULT_REMINDERS,
+  applyReminders,
+  readReminderSettings,
+  type ReminderSettings,
+} from '../../src/lib/reminders';
 
 export default function Settings() {
   const c = useColors();
@@ -22,6 +36,30 @@ export default function Settings() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [reminders, setReminders] = useState<ReminderSettings>(DEFAULT_REMINDERS);
+  const [reminderNote, setReminderNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    void readReminderSettings().then(setReminders);
+  }, []);
+
+  /**
+   * Writes straight through to the OS schedule. If permission is refused the
+   * toggle goes back down, because leaving it on would promise a reminder
+   * that is never going to arrive.
+   */
+  async function updateReminders(next: ReminderSettings) {
+    setReminders(next);
+    setReminderNote(null);
+
+    const ok = await applyReminders(next);
+    if (!ok) {
+      setReminders({ ...next, mealEnabled: false, weighInEnabled: false });
+      setReminderNote(
+        'Notifications are blocked for NutriSnap. Turn them on in your phone settings first.',
+      );
+    }
+  }
 
   useEffect(() => {
     api
@@ -192,6 +230,71 @@ export default function Settings() {
             <Button variant="glass" loading={busy === 'export'} onPress={exportData}>
               Export everything
             </Button>
+          </Card>
+
+          <Card style={{ padding: 18, gap: 14 }}>
+            <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600' }}>
+              Reminders
+            </Text>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.text.primary, fontSize: 15 }}>Daily log reminder</Text>
+                <Text style={{ color: c.text.tertiary, fontSize: 12, marginTop: 2 }}>
+                  Every evening at {String(reminders.mealHour).padStart(2, '0')}:00
+                </Text>
+              </View>
+              <Switch
+                value={reminders.mealEnabled}
+                onValueChange={(value) =>
+                  void updateReminders({ ...reminders, mealEnabled: value })
+                }
+                trackColor={{ true: c.accent.lime, false: c.glass.borderStrong }}
+                accessibilityLabel="Daily log reminder"
+              />
+            </View>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: c.text.primary, fontSize: 15 }}>Weekly weigh-in</Text>
+                <Text style={{ color: c.text.tertiary, fontSize: 12, marginTop: 2 }}>
+                  Mondays at {String(reminders.weighInHour).padStart(2, '0')}:00
+                </Text>
+              </View>
+              <Switch
+                value={reminders.weighInEnabled}
+                onValueChange={(value) =>
+                  void updateReminders({ ...reminders, weighInEnabled: value })
+                }
+                trackColor={{ true: c.accent.lime, false: c.glass.borderStrong }}
+                accessibilityLabel="Weekly weigh-in reminder"
+              />
+            </View>
+
+            {reminderNote && (
+              <Text style={{ color: c.state.warning, fontSize: 12, lineHeight: 18 }}>
+                {reminderNote}
+              </Text>
+            )}
+
+            <Text style={{ color: c.text.tertiary, fontSize: 12, lineHeight: 18 }}>
+              Reminders are set on this phone only. Nothing is scheduled on a server and no push
+              token is registered.
+            </Text>
           </Card>
 
           <Button

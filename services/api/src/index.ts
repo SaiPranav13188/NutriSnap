@@ -8,6 +8,9 @@ import { profileRoutes } from './routes/profile.js';
 import { foodRoutes } from './routes/food.js';
 import { logRoutes } from './routes/logs.js';
 import { progressRoutes } from './routes/progress.js';
+import { activityRoutes } from './routes/activity.js';
+import { photoRoutes } from './routes/photos.js';
+import { coachRoutes } from './routes/coach.js';
 
 const app = Fastify({
   logger: isProduction
@@ -78,6 +81,9 @@ await app.register(profileRoutes);
 await app.register(foodRoutes);
 await app.register(logRoutes);
 await app.register(progressRoutes);
+await app.register(activityRoutes);
+await app.register(photoRoutes);
+await app.register(coachRoutes);
 
 try {
   await app.listen({ port: env.PORT, host: env.HOST });

@@ -41,6 +41,9 @@ const schema = z.object({
   // routes return a clear 503 until a key is present.
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_VISION_MODEL: z.string().default('gemini-3.6-flash'),
+  // The coach writes prose rather than reading images, so it can use the
+  // same fast model; split so either can be pointed elsewhere alone.
+  GEMINI_COACH_MODEL: z.string().default('gemini-3.6-flash'),
 
   /** Comma-separated list. Empty means "reflect any origin" (dev only). */
   API_CORS_ORIGINS: z.string().default(''),

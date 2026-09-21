@@ -27,6 +27,7 @@ import { WeightChart } from '../../src/components/WeightChart';
 import { ChangeTable } from '../../src/components/ChangeTable';
 import { WeekBars } from '../../src/components/WeekBars';
 import { BmiScale } from '../../src/components/BmiScale';
+import { ProgressPhotos } from '../../src/components/ProgressPhotos';
 import { useColors } from '../../src/lib/theme';
 
 export default function Progress() {
@@ -552,6 +553,14 @@ export default function Progress() {
               This moves when your weight or your logging history shifts the estimate, so it
               holds steady until there is reason to change it.
             </Text>
+          </Card>
+
+          {/* Progress photos. */}
+          <Card style={{ padding: 18 }}>
+            <ProgressPhotos
+              currentWeightKg={weight?.current_kg ?? null}
+              onError={setError}
+            />
           </Card>
 
           {/* BMI. */}

@@ -33,6 +33,8 @@ function ThemedNavigator() {
         <Stack.Screen name="signin" options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="log/[id]" />
+        <Stack.Screen name="exercise" />
+        <Stack.Screen name="coach" />
       </Stack>
     </GestureHandlerRootView>
   );

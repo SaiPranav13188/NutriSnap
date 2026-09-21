@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { formatNumber, type FoodLog, type LogSource } from '@nutrisnap/core';
 import { api, ApiError } from '../../src/lib/api';
 import { Card, ErrorNote, Metric, Screen } from '../../src/components/ui';
+import { MealEditSheet } from '../../src/components/MealEditSheet';
 import { IngredientOverlay } from '../../src/components/IngredientOverlay';
 import { useColors } from '../../src/lib/theme';
 
@@ -70,6 +71,8 @@ export default function LogDetail() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [favouriting, setFavouriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -120,6 +123,34 @@ export default function LogDetail() {
       void load();
     }, [load]),
   );
+
+  const saveEdits = useCallback(
+    async (patch: Record<string, unknown>) => {
+      if (!log) return;
+      const { log: updated } = await api.updateLog(log.id, patch);
+      setLog(updated);
+    },
+    [log],
+  );
+
+  /**
+   * Favourites drive one-tap re-logging. The toggle writes straight through
+   * and reflects the row the server returns rather than guessing locally, so
+   * a failed write cannot leave the star lit.
+   */
+  const toggleFavourite = useCallback(async () => {
+    if (!log || favouriting) return;
+    setFavouriting(true);
+    try {
+      const { log: updated } = await api.updateLog(log.id, { is_favorite: !log.is_favorite });
+      setLog(updated);
+      void Haptics.selectionAsync();
+    } catch {
+      setError('Could not update that.');
+    } finally {
+      setFavouriting(false);
+    }
+  }, [log, favouriting]);
 
   const confirmDelete = () => {
     if (!log) return;
@@ -177,11 +208,58 @@ export default function LogDetail() {
           </Pressable>
 
           <Text
-            style={{ color: c.text.secondary, fontSize: 13, letterSpacing: 1.2 }}
+            style={{ color: c.text.secondary, fontSize: 13, letterSpacing: 1.2, flex: 1 }}
             accessibilityRole="header"
           >
             MEAL REPORT
           </Text>
+
+          {log && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Pressable
+                onPress={toggleFavourite}
+                disabled={favouriting}
+                accessibilityRole="button"
+                accessibilityState={{ selected: log.is_favorite }}
+                accessibilityLabel={
+                  log.is_favorite ? 'Remove from favourites' : 'Save to favourites'
+                }
+                hitSlop={8}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: log.is_favorite ? c.accent.lime : c.glass.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: favouriting ? 0.5 : 1,
+                }}
+              >
+                <Text style={{ fontSize: 15 }}>{log.is_favorite ? '\u2605' : '\u2606'}</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setEditing(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Edit this meal"
+                hitSlop={8}
+                style={{
+                  paddingHorizontal: 14,
+                  height: 36,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: c.glass.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ color: c.text.primary, fontSize: 13, fontWeight: '600' }}>
+                  Edit
+                </Text>
+              </Pressable>
+            </View>
+          )}
         </View>
 
         {loading ? (
@@ -423,6 +501,15 @@ export default function LogDetail() {
               </>
             )}
           </ScrollView>
+        )}
+
+        {log && (
+          <MealEditSheet
+            log={log}
+            visible={editing}
+            onClose={() => setEditing(false)}
+            onSave={saveEdits}
+          />
         )}
       </SafeAreaView>
     </Screen>
