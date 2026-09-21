@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,9 +13,10 @@ import {
   type FoodAnalysis,
   type Ingredient,
 } from '@nutrisnap/core';
-import { colors } from '@nutrisnap/ui';
 import { api, ApiError } from '../../src/lib/api';
-import { AnimatedNumber, Button, Card, ErrorNote, Screen } from '../../src/components/ui';
+import { AnimatedNumber, Button, Card, ErrorNote, Metric, Screen } from '../../src/components/ui';
+import { useColors } from '../../src/lib/theme';
+import { IngredientOverlay } from '../../src/components/IngredientOverlay';
 
 type Mode = 'photo' | 'text' | 'barcode' | 'label';
 
@@ -27,6 +28,10 @@ const MODES: Array<{ value: Mode; label: string }> = [
 ];
 
 export default function Scan() {
+  const c = useColors();
+  const { width } = useWindowDimensions();
+  // Square photo, inset by the screen padding on both sides.
+  const photoSize = width - 40;
   const [mode, setMode] = useState<Mode>('photo');
   const [analysis, setAnalysis] = useState<FoodAnalysis | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -213,9 +218,9 @@ export default function Scan() {
   const inputStyle = {
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    color: colors.text.primary,
+    borderColor: c.glass.border,
+    backgroundColor: c.glass.DEFAULT,
+    color: c.text.primary,
     padding: 14,
     fontSize: 16,
   } as const;
@@ -232,11 +237,12 @@ export default function Scan() {
         <SafeAreaView style={{ flex: 1 }} edges={['top']}>
           <ScrollView contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: 40 }}>
             {preview && (
-              <Animated.View entering={FadeIn.duration(400)}>
-                <Image
-                  source={{ uri: preview }}
-                  style={{ width: '100%', aspectRatio: 1, borderRadius: 24 }}
-                  accessibilityLabel="The meal you photographed"
+              <Animated.View entering={FadeIn.duration(400)} style={{ alignItems: 'center' }}>
+                <IngredientOverlay
+                  uri={preview}
+                  ingredients={scaled}
+                  totalProteinG={totals.protein_g}
+                  size={photoSize}
                 />
               </Animated.View>
             )}
@@ -244,10 +250,10 @@ export default function Scan() {
             <Card style={{ padding: 18, gap: 14 }}>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 20, fontWeight: '700', lineHeight: 26 }}>
+                  <Text style={{ color: c.text.primary, fontSize: 20, fontWeight: '700', lineHeight: 26 }}>
                     {analysis.name}
                   </Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 3 }}>
+                  <Text style={{ color: c.text.tertiary, fontSize: 13, marginTop: 3 }}>
                     About {Math.round(analysis.estimated_grams * multiplier)} g
                   </Text>
                 </View>
@@ -262,7 +268,7 @@ export default function Scan() {
                 >
                   <Text
                     style={{
-                      color: confidence < 60 ? colors.state.warning : colors.state.success,
+                      color: confidence < 60 ? c.state.warning : c.state.success,
                       fontSize: 11,
                       fontWeight: '600',
                     }}
@@ -273,51 +279,43 @@ export default function Scan() {
               </View>
 
               {analysis.notes ? (
-                <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 19 }}>
+                <Text style={{ color: c.text.secondary, fontSize: 13, lineHeight: 19 }}>
                   {analysis.notes}
                 </Text>
               ) : null}
 
+              {/*
+                All seven values get the same treatment. Sugar, fibre and
+                sodium used to be small grey text under the macros, which read
+                as an afterthought even though they are exactly what someone
+                watching sugar or sodium has opened the app for.
+              */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                {(
-                  [
-                    { label: 'Calories', value: totals.calories, color: colors.accent.lime, suffix: '' },
-                    { label: 'Protein', value: totals.protein_g, color: colors.macro.protein, suffix: 'g' },
-                    { label: 'Carbs', value: totals.carbs_g, color: colors.macro.carbs, suffix: 'g' },
-                    { label: 'Fat', value: totals.fat_g, color: colors.macro.fat, suffix: 'g' },
-                  ] as const
-                ).map((metric) => (
-                  <View key={metric.label} style={{ alignItems: 'center' }}>
-                    <AnimatedNumber
-                      value={Math.round(metric.value)}
-                      suffix={metric.suffix}
-                      duration={600}
-                      style={{ color: metric.color, fontSize: 19, fontWeight: '700' }}
-                    />
-                    <Text style={{ color: colors.text.tertiary, fontSize: 10, marginTop: 3, textTransform: 'uppercase' }}>
-                      {metric.label}
-                    </Text>
-                  </View>
-                ))}
+                <Metric label="Calories" value={totals.calories} color={c.accent.lime} />
+                <Metric label="Protein" value={totals.protein_g} suffix="g" color={c.macro.protein} />
+                <Metric label="Carbs" value={totals.carbs_g} suffix="g" color={c.macro.carbs} />
+                <Metric label="Fat" value={totals.fat_g} suffix="g" color={c.macro.fat} />
               </View>
 
-              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16 }}>
-                <Text style={{ color: colors.text.tertiary, fontSize: 11 }}>
-                  Sugar {Math.round(totals.sugar_g)}g
-                </Text>
-                <Text style={{ color: colors.text.tertiary, fontSize: 11 }}>
-                  Fibre {Math.round(totals.fiber_g)}g
-                </Text>
-                <Text style={{ color: colors.text.tertiary, fontSize: 11 }}>
-                  Sodium {Math.round(totals.sodium_mg)}mg
-                </Text>
+              <View style={{ height: 1, backgroundColor: c.glass.border }} />
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+                <Metric label="Sugar" value={totals.sugar_g} suffix="g" color={c.text.primary} size="sm" />
+                <Metric label="Fibre" value={totals.fiber_g} suffix="g" color={c.text.primary} size="sm" />
+                <Metric
+                  label="Sodium"
+                  value={totals.sodium_mg}
+                  suffix="mg"
+                  color={c.text.primary}
+                  size="sm"
+                />
               </View>
             </Card>
 
             <Card style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View>
-                <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '500' }}>Servings</Text>
-                <Text style={{ color: colors.text.secondary, fontSize: 13, marginTop: 2 }}>
+                <Text style={{ color: c.text.primary, fontSize: 15, fontWeight: '500' }}>Servings</Text>
+                <Text style={{ color: c.text.secondary, fontSize: 13, marginTop: 2 }}>
                   How much did you eat?
                 </Text>
               </View>
@@ -330,12 +328,12 @@ export default function Scan() {
                     void Haptics.selectionAsync();
                     setMultiplier((m) => Math.max(0.25, Math.round((m - 0.25) * 100) / 100));
                   }}
-                  style={stepperStyle}
+                  style={stepperStyle(c.glass.border)}
                 >
-                  <Text style={{ color: colors.text.primary, fontSize: 22 }}>−</Text>
+                  <Text style={{ color: c.text.primary, fontSize: 22 }}>−</Text>
                 </Pressable>
 
-                <Text style={{ color: colors.text.primary, fontSize: 19, fontWeight: '700', minWidth: 52, textAlign: 'center' }}>
+                <Text style={{ color: c.text.primary, fontSize: 19, fontWeight: '700', minWidth: 52, textAlign: 'center' }}>
                   {multiplier}×
                 </Text>
 
@@ -346,9 +344,9 @@ export default function Scan() {
                     void Haptics.selectionAsync();
                     setMultiplier((m) => Math.min(10, Math.round((m + 0.25) * 100) / 100));
                   }}
-                  style={stepperStyle}
+                  style={stepperStyle(c.glass.border)}
                 >
-                  <Text style={{ color: colors.text.primary, fontSize: 22 }}>+</Text>
+                  <Text style={{ color: c.text.primary, fontSize: 22 }}>+</Text>
                 </Pressable>
               </View>
             </Card>
@@ -357,7 +355,7 @@ export default function Scan() {
               <Card style={{ padding: 18 }}>
                 <Text
                   style={{
-                    color: colors.text.secondary,
+                    color: c.text.secondary,
                     fontSize: 12,
                     fontWeight: '600',
                     textTransform: 'uppercase',
@@ -376,17 +374,17 @@ export default function Scan() {
                         gap: 10,
                         paddingVertical: 11,
                         borderBottomWidth: i === scaled.length - 1 ? 0 : 1,
-                        borderBottomColor: 'rgba(255,255,255,0.06)',
+                        borderBottomColor: c.glass.DEFAULT,
                       }}
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.text.primary, fontSize: 15 }}>{ingredient.name}</Text>
-                        <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
+                        <Text style={{ color: c.text.primary, fontSize: 15 }}>{ingredient.name}</Text>
+                        <Text style={{ color: c.text.tertiary, fontSize: 12 }}>
                           {Math.round(ingredient.grams)} g
                         </Text>
                       </View>
 
-                      <Text style={{ color: colors.text.secondary, fontSize: 13 }}>
+                      <Text style={{ color: c.text.secondary, fontSize: 13 }}>
                         {Math.round(ingredient.calories)} kcal
                       </Text>
 
@@ -396,7 +394,7 @@ export default function Scan() {
                         onPress={() => setIngredients((list) => list.filter((_, index) => index !== i))}
                         style={{ padding: 6 }}
                       >
-                        <Text style={{ color: colors.state.danger, fontSize: 16 }}>×</Text>
+                        <Text style={{ color: c.state.danger, fontSize: 16 }}>×</Text>
                       </Pressable>
                     </View>
                   </Animated.View>
@@ -406,7 +404,7 @@ export default function Scan() {
 
             {showFix && (
               <Card style={{ padding: 18, gap: 12 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600' }}>
+                <Text style={{ color: c.text.primary, fontSize: 15, fontWeight: '600' }}>
                   What did we get wrong?
                 </Text>
                 <TextInput
@@ -416,7 +414,7 @@ export default function Scan() {
                   numberOfLines={3}
                   maxLength={500}
                   placeholder="e.g. That's two servings, and it's tofu, not chicken."
-                  placeholderTextColor={colors.text.tertiary}
+                  placeholderTextColor={c.text.tertiary}
                   style={[inputStyle, { minHeight: 88, textAlignVertical: 'top' }]}
                 />
                 <Button onPress={runFix} loading={busy} disabled={correction.trim().length < 3}>
@@ -452,8 +450,8 @@ export default function Scan() {
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
           <View>
-            <Text style={{ color: colors.text.primary, fontSize: 26, fontWeight: '700' }}>Log a meal</Text>
-            <Text style={{ color: colors.text.secondary, fontSize: 15, marginTop: 4 }}>
+            <Text style={{ color: c.text.primary, fontSize: 26, fontWeight: '700' }}>Log a meal</Text>
+            <Text style={{ color: c.text.secondary, fontSize: 15, marginTop: 4 }}>
               Photograph it, scan it, or just say what it was.
             </Text>
           </View>
@@ -476,11 +474,11 @@ export default function Scan() {
                     paddingVertical: 10,
                     borderRadius: 999,
                     borderWidth: 1,
-                    borderColor: active ? 'rgba(198,255,61,0.6)' : 'rgba(255,255,255,0.12)',
+                    borderColor: active ? 'rgba(198,255,61,0.6)' : c.glass.border,
                     backgroundColor: active ? 'rgba(198,255,61,0.10)' : 'transparent',
                   }}
                 >
-                  <Text style={{ color: active ? colors.text.primary : colors.text.secondary, fontSize: 14, fontWeight: '500' }}>
+                  <Text style={{ color: active ? c.text.primary : c.text.secondary, fontSize: 14, fontWeight: '500' }}>
                     {item.label}
                   </Text>
                 </Pressable>
@@ -496,7 +494,7 @@ export default function Scan() {
                   borderRadius: 20,
                   borderWidth: 1,
                   borderStyle: 'dashed',
-                  borderColor: 'rgba(255,255,255,0.16)',
+                  borderColor: c.glass.border,
                   alignItems: 'center',
                   justifyContent: 'center',
                   padding: 24,
@@ -507,10 +505,10 @@ export default function Scan() {
                 ) : (
                   <>
                     <Text style={{ fontSize: 40 }}>{mode === 'label' ? '🏷️' : '📸'}</Text>
-                    <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
+                    <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
                       {mode === 'label' ? 'Photograph the nutrition panel' : 'Take a photo of your meal'}
                     </Text>
-                    <Text style={{ color: colors.text.secondary, fontSize: 13, marginTop: 8, textAlign: 'center', lineHeight: 19 }}>
+                    <Text style={{ color: c.text.secondary, fontSize: 13, marginTop: 8, textAlign: 'center', lineHeight: 19 }}>
                       {mode === 'label'
                         ? 'Get the whole panel in frame and keep it flat.'
                         : 'Shoot from above, and include a fork or your hand so we can judge the portion.'}
@@ -530,7 +528,7 @@ export default function Scan() {
 
           {mode === 'text' && (
             <Card style={{ padding: 20, gap: 14 }}>
-              <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600' }}>
+              <Text style={{ color: c.text.primary, fontSize: 15, fontWeight: '600' }}>
                 What did you eat?
               </Text>
               <TextInput
@@ -540,10 +538,10 @@ export default function Scan() {
                 numberOfLines={4}
                 maxLength={500}
                 placeholder="Two scrambled eggs, sourdough with butter, and a flat white"
-                placeholderTextColor={colors.text.tertiary}
+                placeholderTextColor={c.text.tertiary}
                 style={[inputStyle, { minHeight: 110, textAlignVertical: 'top' }]}
               />
-              <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
+              <Text style={{ color: c.text.tertiary, fontSize: 12 }}>
                 Mention quantities where you know them — it makes the estimate much better.
               </Text>
               <Button onPress={runText} loading={busy} disabled={description.trim().length < 2}>
@@ -554,7 +552,7 @@ export default function Scan() {
 
           {mode === 'barcode' && (
             <Card style={{ padding: 20, gap: 14 }}>
-              <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600' }}>
+              <Text style={{ color: c.text.primary, fontSize: 15, fontWeight: '600' }}>
                 Barcode number
               </Text>
               <TextInput
@@ -563,10 +561,10 @@ export default function Scan() {
                 keyboardType="number-pad"
                 maxLength={14}
                 placeholder="5000112637922"
-                placeholderTextColor={colors.text.tertiary}
+                placeholderTextColor={c.text.tertiary}
                 style={[inputStyle, { fontSize: 20, textAlign: 'center', letterSpacing: 2 }]}
               />
-              <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 18 }}>
+              <Text style={{ color: c.text.tertiary, fontSize: 12, lineHeight: 18 }}>
                 Type the digits printed under the barcode. Data comes from Open Food Facts, so
                 coverage depends on what the community has catalogued.
               </Text>
@@ -583,12 +581,13 @@ export default function Scan() {
   );
 }
 
-const stepperStyle = {
-  width: 40,
-  height: 40,
-  borderRadius: 20,
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.14)',
-  alignItems: 'center',
-  justifyContent: 'center',
-} as const;
+const stepperStyle = (borderColor: string) =>
+  ({
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor,
+    alignItems: 'center',
+    justifyContent: 'center',
+  }) as const;

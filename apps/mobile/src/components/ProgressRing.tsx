@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { useColors } from '../lib/theme';
 import Animated, {
   useAnimatedProps,
   useSharedValue,
@@ -36,6 +37,7 @@ export function ProgressRing({
   gradientId,
   children,
 }: ProgressRingProps) {
+  const c = useColors();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const safeRatio = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));
@@ -68,7 +70,7 @@ export function ProgressRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="rgba(255,255,255,0.07)"
+          stroke={c.glass.border}
           strokeWidth={strokeWidth}
         />
 

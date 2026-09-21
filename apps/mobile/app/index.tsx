@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors } from '@nutrisnap/ui';
 import { useSession } from '../src/lib/session';
+import { useColors } from '../src/lib/theme';
 
 /**
  * Splash / router gate. Signed-in users go straight to their dashboard;
@@ -11,6 +11,7 @@ import { useSession } from '../src/lib/session';
  * comes before the account.
  */
 export default function Index() {
+  const c = useColors();
   const { session, loading } = useSession();
 
   useEffect(() => {
@@ -24,18 +25,18 @@ export default function Index() {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: colors.base['900'],
+        backgroundColor: c.base['900'],
         gap: 28,
       }}
     >
       <LinearGradient
-        colors={[colors.accent.lime, colors.accent.cyan]}
+        colors={[c.accent.lime, c.accent.cyan]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ width: 76, height: 76, borderRadius: 26 }}
       />
-      <Text style={{ color: colors.text.primary, fontSize: 26, fontWeight: '700' }}>NutriSnap</Text>
-      <ActivityIndicator color={colors.accent.lime} />
+      <Text style={{ color: c.text.primary, fontSize: 26, fontWeight: '700' }}>NutriSnap</Text>
+      <ActivityIndicator color={c.accent.lime} />
     </View>
   );
 }

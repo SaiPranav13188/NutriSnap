@@ -10,20 +10,21 @@ import Animated, {
   useDerivedValue,
   runOnJS,
 } from 'react-native-reanimated';
-import { colors } from '@nutrisnap/ui';
+import { useColors } from '../lib/theme';
 
 /**
  * The frosted card. React Native has no backdrop-filter, so the glass effect
  * is approximated with a translucent fill and a hairline border — which reads
- * the same over the app's dark, softly-lit background.
+ * the same over both the dark and the light background.
  */
 export function Card({ style, children, ...props }: ViewProps) {
+  const c = useColors();
   return (
     <View
       style={[
         {
-          backgroundColor: 'rgba(255,255,255,0.05)',
-          borderColor: 'rgba(255,255,255,0.10)',
+          backgroundColor: c.glass.DEFAULT,
+          borderColor: c.glass.border,
           borderWidth: 1,
           borderRadius: 24,
         },
@@ -54,25 +55,20 @@ export function Button({
   disabled = false,
   style,
 }: ButtonProps) {
+  const c = useColors();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const isDisabled = disabled || loading;
 
+  // The accent gradient is always a light fill, so its label stays dark in
+  // both themes rather than following the text colour.
+  const labelColor = variant === 'accent' ? '#07090C' : c.text.primary;
+
   const content = (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-      {loading && (
-        <ActivityIndicator size="small" color={variant === 'accent' ? colors.base['900'] : '#fff'} />
-      )}
+      {loading && <ActivityIndicator size="small" color={labelColor} />}
       {typeof children === 'string' ? (
-        <Text
-          style={{
-            fontSize: 16,
-            fontWeight: '600',
-            color: variant === 'accent' ? colors.base['900'] : colors.text.primary,
-          }}
-        >
-          {children}
-        </Text>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: labelColor }}>{children}</Text>
       ) : (
         children
       )}
@@ -99,7 +95,7 @@ export function Button({
       >
         {variant === 'accent' ? (
           <LinearGradient
-            colors={[colors.accent.lime, colors.accent.cyan]}
+            colors={[c.accent.lime, c.accent.cyan]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={{ height: 54, borderRadius: 24, justifyContent: 'center', paddingHorizontal: 24 }}
@@ -114,10 +110,13 @@ export function Button({
               justifyContent: 'center',
               paddingHorizontal: 24,
               backgroundColor:
-                variant === 'danger' ? 'rgba(255,91,110,0.14)' : variant === 'ghost' ? 'transparent' : 'rgba(255,255,255,0.08)',
+                variant === 'danger'
+                  ? `${c.state.danger}22`
+                  : variant === 'ghost'
+                    ? 'transparent'
+                    : c.glass.strong,
               borderWidth: variant === 'ghost' ? 0 : 1,
-              borderColor:
-                variant === 'danger' ? 'rgba(255,91,110,0.32)' : 'rgba(255,255,255,0.14)',
+              borderColor: variant === 'danger' ? `${c.state.danger}55` : c.glass.border,
             }}
           >
             {content}
@@ -170,26 +169,70 @@ export function AnimatedNumber({
   );
 }
 
+/**
+ * One nutrition figure with its label. Used for all seven values on the scan
+ * results screen so calories, the three macros, and sugar/fibre/sodium are
+ * presented with equal weight rather than the last three being an afterthought.
+ */
+export function Metric({
+  label,
+  value,
+  suffix = '',
+  color,
+  size = 'md',
+}: {
+  label: string;
+  value: number;
+  suffix?: string;
+  color: string;
+  size?: 'md' | 'sm';
+}) {
+  const c = useColors();
+  return (
+    <View style={{ alignItems: 'center', minWidth: size === 'md' ? 64 : 72 }}>
+      <AnimatedNumber
+        value={Math.round(value)}
+        suffix={suffix}
+        duration={600}
+        style={{ color, fontSize: size === 'md' ? 20 : 17, fontWeight: '700' }}
+      />
+      <Text
+        style={{
+          color: c.text.tertiary,
+          fontSize: 10,
+          marginTop: 3,
+          letterSpacing: 0.6,
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 /** Inline error banner, used on every screen that can fail. */
 export function ErrorNote({ message }: { message: string }) {
+  const c = useColors();
   return (
     <View
       style={{
-        backgroundColor: 'rgba(255,91,110,0.10)',
+        backgroundColor: `${c.state.danger}1A`,
         borderRadius: 18,
         paddingHorizontal: 16,
         paddingVertical: 12,
       }}
       accessibilityLiveRegion="polite"
     >
-      <Text style={{ color: colors.state.danger, fontSize: 14, lineHeight: 20 }}>{message}</Text>
+      <Text style={{ color: c.state.danger, fontSize: 14, lineHeight: 20 }}>{message}</Text>
     </View>
   );
 }
 
 export function Screen({ children, style, ...props }: ViewProps) {
+  const c = useColors();
   return (
-    <View style={[{ flex: 1, backgroundColor: colors.base['900'] }, style]} {...props}>
+    <View style={[{ flex: 1, backgroundColor: c.base['900'] }, style]} {...props}>
       {children}
     </View>
   );

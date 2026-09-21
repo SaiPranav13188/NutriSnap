@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@nutrisnap/ui';
 import { supabase } from '../src/lib/supabase';
 import { api } from '../src/lib/api';
 import { clearStoredAnswers, readStoredAnswers } from '../src/lib/session';
@@ -13,8 +12,10 @@ import {
   type OAuthProvider,
 } from '../src/lib/oauth';
 import { Button, Card, ErrorNote, Screen } from '../src/components/ui';
+import { useColors } from '../src/lib/theme';
 
 export default function SignIn() {
+  const c = useColors();
   const params = useLocalSearchParams<{ mode?: string }>();
   const [mode, setMode] = useState<'signin' | 'signup'>(
     params.mode === 'signup' ? 'signup' : 'signin',
@@ -90,9 +91,9 @@ export default function SignIn() {
     height: 52,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    color: colors.text.primary,
+    borderColor: c.glass.border,
+    backgroundColor: c.glass.DEFAULT,
+    color: c.text.primary,
     paddingHorizontal: 16,
     fontSize: 16,
   } as const;
@@ -110,10 +111,10 @@ export default function SignIn() {
           >
             <Card style={{ padding: 24, gap: 16 }}>
               <View>
-                <Text style={{ color: colors.text.primary, fontSize: 26, fontWeight: '700' }}>
+                <Text style={{ color: c.text.primary, fontSize: 26, fontWeight: '700' }}>
                   {mode === 'signup' ? 'Create your account' : 'Welcome back'}
                 </Text>
-                <Text style={{ color: colors.text.secondary, fontSize: 15, marginTop: 8, lineHeight: 21 }}>
+                <Text style={{ color: c.text.secondary, fontSize: 15, marginTop: 8, lineHeight: 21 }}>
                   {mode === 'signup'
                     ? 'One account keeps your plan in sync on web and phone.'
                     : 'Sign in to pick up where you left off.'}
@@ -146,9 +147,9 @@ export default function SignIn() {
                   </View>
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.10)' }} />
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12, letterSpacing: 1 }}>OR</Text>
-                    <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.10)' }} />
+                    <View style={{ flex: 1, height: 1, backgroundColor: c.glass.border }} />
+                    <Text style={{ color: c.text.tertiary, fontSize: 12, letterSpacing: 1 }}>OR</Text>
+                    <View style={{ flex: 1, height: 1, backgroundColor: c.glass.border }} />
                   </View>
                 </>
               )}
@@ -158,7 +159,7 @@ export default function SignIn() {
                   value={email}
                   onChangeText={setEmail}
                   placeholder="you@example.com"
-                  placeholderTextColor={colors.text.tertiary}
+                  placeholderTextColor={c.text.tertiary}
                   autoCapitalize="none"
                   autoComplete="email"
                   keyboardType="email-address"
@@ -170,7 +171,7 @@ export default function SignIn() {
                   value={password}
                   onChangeText={setPassword}
                   placeholder="Password (at least 6 characters)"
-                  placeholderTextColor={colors.text.tertiary}
+                  placeholderTextColor={c.text.tertiary}
                   secureTextEntry
                   autoCapitalize="none"
                   style={inputStyle}
@@ -181,7 +182,7 @@ export default function SignIn() {
               {error && <ErrorNote message={error} />}
 
               {notice && (
-                <Text style={{ color: colors.accent.cyan, fontSize: 14, lineHeight: 20 }}>
+                <Text style={{ color: c.accent.cyan, fontSize: 14, lineHeight: 20 }}>
                   {notice}
                 </Text>
               )}
@@ -202,7 +203,7 @@ export default function SignIn() {
                 }}
                 accessibilityRole="button"
               >
-                <Text style={{ color: colors.text.secondary, fontSize: 14, textAlign: 'center' }}>
+                <Text style={{ color: c.text.secondary, fontSize: 14, textAlign: 'center' }}>
                   {mode === 'signup'
                     ? 'Already have an account? Sign in'
                     : "Don't have an account? Create one"}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -12,17 +12,29 @@ import {
   MAINTAIN_FOCUS_AREAS,
   REFERRAL_SOURCES,
   calculateTargets,
-  cmToFeetInches,
-  kgToLb,
   stepsFor,
   validateStep,
   type OnboardingAnswers,
   type StepId,
 } from '@nutrisnap/core';
-import { colors, macroGradients } from '@nutrisnap/ui';
+import { macroGradients } from '@nutrisnap/ui';
 import { AnimatedNumber, Button, Card, Screen } from '../src/components/ui';
 import { ProgressRing } from '../src/components/ProgressRing';
+import { DateOfBirthPicker } from '../src/components/DateOfBirthPicker';
+import { HeightPicker } from '../src/components/HeightPicker';
+import { RulerPicker } from '../src/components/RulerPicker';
 import { storeAnswers, readStoredAnswers } from '../src/lib/session';
+import { useColors } from '../src/lib/theme';
+
+/** Inset of the step body, which the weight ruler cancels to run full width. */
+const STEP_PADDING = 20;
+
+/**
+ * Steps whose control is itself a vertical scroller. The step body cannot also
+ * scroll on these, or the two compete for the same drag and the wheels barely
+ * move — they fit on one screen regardless.
+ */
+const WHEEL_STEPS: StepId[] = ['date_of_birth', 'height'];
 
 const DEFAULTS: OnboardingAnswers = {
   height_cm: 170,
@@ -33,6 +45,7 @@ const DEFAULTS: OnboardingAnswers = {
 };
 
 export default function Onboarding() {
+  const c = useColors();
   const [answers, setAnswers] = useState<OnboardingAnswers>(DEFAULTS);
   const [index, setIndex] = useState(0);
   const [showError, setShowError] = useState(false);
@@ -133,43 +146,49 @@ export default function Onboarding() {
               height: 36,
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.12)',
+              borderColor: c.glass.border,
               alignItems: 'center',
               justifyContent: 'center',
               opacity: index === 0 ? 0.35 : 1,
             }}
           >
-            <Text style={{ color: colors.text.primary, fontSize: 18, lineHeight: 20 }}>‹</Text>
+            <Text style={{ color: c.text.primary, fontSize: 18, lineHeight: 20 }}>‹</Text>
           </Pressable>
 
-          <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.08)' }}>
+          <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: c.glass.DEFAULT }}>
             <View
               style={{
                 width: `${progress}%`,
                 height: '100%',
                 borderRadius: 3,
-                backgroundColor: colors.accent.lime,
+                backgroundColor: c.accent.lime,
               }}
             />
           </View>
 
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, width: 44, textAlign: 'right' }}>
+          <Text style={{ color: c.text.tertiary, fontSize: 12, width: 44, textAlign: 'right' }}>
             {index + 1}/{steps.length}
           </Text>
         </View>
 
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20, gap: 24 }}
+          scrollEnabled={!WHEEL_STEPS.includes(step.id)}
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'center',
+            padding: STEP_PADDING,
+            gap: 24,
+          }}
           keyboardShouldPersistTaps="handled"
         >
           <Animated.View key={step.id} entering={FadeInRight.duration(280)} exiting={FadeOut.duration(140)}>
             {step.id !== 'crafting' && (
               <View style={{ marginBottom: 26 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 28, fontWeight: '700', lineHeight: 34 }}>
+                <Text style={{ color: c.text.primary, fontSize: 28, fontWeight: '700', lineHeight: 34 }}>
                   {step.title}
                 </Text>
                 {step.subtitle && (
-                  <Text style={{ color: colors.text.secondary, fontSize: 15, lineHeight: 22, marginTop: 10 }}>
+                  <Text style={{ color: c.text.secondary, fontSize: 15, lineHeight: 22, marginTop: 10 }}>
                     {step.subtitle}
                   </Text>
                 )}
@@ -187,7 +206,7 @@ export default function Onboarding() {
             {showError && error && (
               <Animated.Text
                 entering={FadeIn}
-                style={{ color: colors.state.danger, fontSize: 14, marginTop: 16 }}
+                style={{ color: c.state.danger, fontSize: 14, marginTop: 16 }}
                 accessibilityLiveRegion="polite"
               >
                 {error}
@@ -204,7 +223,7 @@ export default function Onboarding() {
 
             {step.optional && (
               <Pressable onPress={goNext} accessibilityRole="button">
-                <Text style={{ color: colors.text.tertiary, fontSize: 14, textAlign: 'center' }}>
+                <Text style={{ color: c.text.tertiary, fontSize: 14, textAlign: 'center' }}>
                   Skip this
                 </Text>
               </Pressable>
@@ -227,6 +246,7 @@ interface StepBodyProps {
 }
 
 function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) {
+  const c = useColors();
   switch (id) {
     case 'gender':
       return (
@@ -259,30 +279,15 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
 
     case 'date_of_birth':
       return (
-        <TextInput
-          value={answers.date_of_birth ?? ''}
-          onChangeText={(text) => set('date_of_birth', text)}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={colors.text.tertiary}
-          keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
-          maxLength={10}
-          style={{
-            height: 64,
-            borderRadius: 22,
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.12)',
-            backgroundColor: 'rgba(255,255,255,0.04)',
-            color: colors.text.primary,
-            fontSize: 22,
-            textAlign: 'center',
-          }}
+        <DateOfBirthPicker
+          value={answers.date_of_birth}
+          onChange={(v) => set('date_of_birth', v)}
         />
       );
 
     case 'height':
       return (
-        <Measure
-          kind="height"
+        <HeightPicker
           value={answers.height_cm ?? 170}
           onChange={(v) => set('height_cm', v)}
           units={answers.units ?? 'metric'}
@@ -292,23 +297,31 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
 
     case 'weight':
       return (
-        <Measure
-          kind="weight"
+        <RulerPicker
+          caption="Current Weight"
           value={answers.current_weight_kg ?? 70}
           onChange={(v) => set('current_weight_kg', v)}
           units={answers.units ?? 'metric'}
           onUnits={(u) => set('units', u)}
+          bleed={STEP_PADDING}
         />
       );
 
     case 'goal_weight':
       return (
-        <Measure
-          kind="weight"
+        <RulerPicker
+          caption={
+            answers.goal === 'lose'
+              ? 'Lose Weight'
+              : answers.goal === 'gain'
+                ? 'Gain Weight'
+                : 'Maintain Weight'
+          }
           value={answers.goal_weight_kg ?? answers.current_weight_kg ?? 70}
           onChange={(v) => set('goal_weight_kg', v)}
           units={answers.units ?? 'metric'}
           onUnits={(u) => set('units', u)}
+          bleed={STEP_PADDING}
         />
       );
 
@@ -369,15 +382,15 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
           value={answers.target_date ?? ''}
           onChangeText={(text) => set('target_date', text || null)}
           placeholder="YYYY-MM-DD (optional)"
-          placeholderTextColor={colors.text.tertiary}
+          placeholderTextColor={c.text.tertiary}
           maxLength={10}
           style={{
             height: 64,
             borderRadius: 22,
             borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.12)',
-            backgroundColor: 'rgba(255,255,255,0.04)',
-            color: colors.text.primary,
+            borderColor: c.glass.border,
+            backgroundColor: c.glass.DEFAULT,
+            color: c.text.primary,
             fontSize: 20,
             textAlign: 'center',
           }}
@@ -443,11 +456,11 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
                   paddingVertical: 11,
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: active ? 'rgba(198,255,61,0.6)' : 'rgba(255,255,255,0.12)',
+                  borderColor: active ? 'rgba(198,255,61,0.6)' : c.glass.border,
                   backgroundColor: active ? 'rgba(198,255,61,0.10)' : 'transparent',
                 }}
               >
-                <Text style={{ color: active ? colors.text.primary : colors.text.secondary, fontSize: 14 }}>
+                <Text style={{ color: active ? c.text.primary : c.text.secondary, fontSize: 14 }}>
                   {allergen}
                 </Text>
               </Pressable>
@@ -490,10 +503,10 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
           ].map((item, i) => (
             <Animated.View key={item.title} entering={FadeInRight.delay(i * 120)}>
               <Card style={{ padding: 18 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>
+                <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600' }}>
                   {item.title}
                 </Text>
-                <Text style={{ color: colors.text.secondary, fontSize: 14, marginTop: 4, lineHeight: 20 }}>
+                <Text style={{ color: c.text.secondary, fontSize: 14, marginTop: 4, lineHeight: 20 }}>
                   {item.body}
                 </Text>
               </Card>
@@ -505,7 +518,7 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
     case 'crafting':
       return (
         <View style={{ alignItems: 'center', gap: 32, paddingVertical: 40 }}>
-          <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700' }}>
+          <Text style={{ color: c.text.primary, fontSize: 24, fontWeight: '700' }}>
             Crafting your plan…
           </Text>
 
@@ -520,19 +533,19 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
                       height: 24,
                       borderRadius: 12,
                       borderWidth: 1,
-                      borderColor: done ? colors.accent.lime : 'rgba(255,255,255,0.2)',
-                      backgroundColor: done ? colors.accent.lime : 'transparent',
+                      borderColor: done ? c.accent.lime : c.glass.borderStrong,
+                      backgroundColor: done ? c.accent.lime : 'transparent',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
                     {done && (
-                      <Text style={{ color: colors.base['900'], fontSize: 13, fontWeight: '900' }}>✓</Text>
+                      <Text style={{ color: c.base['900'], fontSize: 13, fontWeight: '900' }}>✓</Text>
                     )}
                   </View>
                   <Text
                     style={{
-                      color: done ? colors.text.primary : colors.text.tertiary,
+                      color: done ? c.text.primary : c.text.tertiary,
                       fontSize: 15,
                     }}
                   >
@@ -548,7 +561,7 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
     case 'reveal':
       if (!previewTargets) {
         return (
-          <Text style={{ color: colors.text.secondary, textAlign: 'center' }}>
+          <Text style={{ color: c.text.secondary, textAlign: 'center' }}>
             Something is missing from your answers — step back and fill in the gaps.
           </Text>
         );
@@ -560,19 +573,19 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
             ratio={1}
             size={220}
             strokeWidth={16}
-            from={colors.accent.lime}
-            to={colors.accent.cyan}
+            from={c.accent.lime}
+            to={c.accent.cyan}
             gradientId="revealRing"
           >
             <View style={{ alignItems: 'center' }}>
               <AnimatedNumber
                 value={previewTargets.calories}
                 duration={1400}
-                style={{ color: colors.text.primary, fontSize: 52, fontWeight: '700' }}
+                style={{ color: c.text.primary, fontSize: 52, fontWeight: '700' }}
               />
               <Text
                 style={{
-                  color: colors.text.secondary,
+                  color: c.text.secondary,
                   fontSize: 12,
                   letterSpacing: 2,
                   textTransform: 'uppercase',
@@ -599,7 +612,7 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
                   duration={1200}
                   style={{ color: macroGradients[macro.key].from, fontSize: 21, fontWeight: '700' }}
                 />
-                <Text style={{ color: colors.text.secondary, fontSize: 11, marginTop: 4, textTransform: 'uppercase' }}>
+                <Text style={{ color: c.text.secondary, fontSize: 11, marginTop: 4, textTransform: 'uppercase' }}>
                   {macro.label}
                 </Text>
               </Card>
@@ -607,7 +620,7 @@ function StepBody({ id, answers, set, crafted, previewTargets }: StepBodyProps) 
           </View>
 
           <Card style={{ padding: 16 }}>
-            <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 20 }}>
+            <Text style={{ color: c.text.secondary, fontSize: 13, lineHeight: 20 }}>
               Built from your BMR of {Math.round(previewTargets.bmr)} kcal and an estimated daily
               burn of {Math.round(previewTargets.tdee)} kcal.
               {previewTargets.floorApplied &&
@@ -633,6 +646,7 @@ function Options({
   value: string | undefined;
   onChange: (value: string) => void;
 }) {
+  const c = useColors();
   return (
     <View style={{ gap: 10 }}>
       {items.map((item, i) => {
@@ -650,16 +664,16 @@ function Options({
                 padding: 16,
                 borderRadius: 22,
                 borderWidth: 1,
-                borderColor: selected ? 'rgba(198,255,61,0.6)' : 'rgba(255,255,255,0.10)',
-                backgroundColor: selected ? 'rgba(198,255,61,0.09)' : 'rgba(255,255,255,0.035)',
+                borderColor: selected ? 'rgba(198,255,61,0.6)' : c.glass.border,
+                backgroundColor: selected ? 'rgba(198,255,61,0.09)' : c.glass.DEFAULT,
               }}
             >
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '500' }}>
+                <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '500' }}>
                   {item.label}
                 </Text>
                 {item.hint && (
-                  <Text style={{ color: colors.text.secondary, fontSize: 13, marginTop: 2 }}>
+                  <Text style={{ color: c.text.secondary, fontSize: 13, marginTop: 2 }}>
                     {item.hint}
                   </Text>
                 )}
@@ -671,14 +685,14 @@ function Options({
                   height: 22,
                   borderRadius: 11,
                   borderWidth: 1,
-                  borderColor: selected ? colors.accent.lime : 'rgba(255,255,255,0.25)',
-                  backgroundColor: selected ? colors.accent.lime : 'transparent',
+                  borderColor: selected ? c.accent.lime : c.glass.borderStrong,
+                  backgroundColor: selected ? c.accent.lime : 'transparent',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
                 {selected && (
-                  <Text style={{ color: colors.base['900'], fontSize: 12, fontWeight: '900' }}>✓</Text>
+                  <Text style={{ color: c.base['900'], fontSize: 12, fontWeight: '900' }}>✓</Text>
                 )}
               </View>
             </Pressable>
@@ -686,137 +700,5 @@ function Options({
         );
       })}
     </View>
-  );
-}
-
-/**
- * Stepper-based measure picker. React Native has no range input, so this uses
- * large ± controls, which are easier to hit accurately on a phone than a
- * slider anyway.
- */
-function Measure({
-  kind,
-  value,
-  onChange,
-  units,
-  onUnits,
-}: {
-  kind: 'height' | 'weight';
-  value: number;
-  onChange: (metric: number) => void;
-  units: 'metric' | 'imperial';
-  onUnits: (u: 'metric' | 'imperial') => void;
-}) {
-  const imperial = units === 'imperial';
-  const stepMetric = kind === 'height' ? 1 : 0.5;
-
-  const display = () => {
-    if (kind === 'height') {
-      if (!imperial) return { main: String(Math.round(value)), sub: 'cm' };
-      const { feet, inches } = cmToFeetInches(value);
-      return { main: `${feet}′ ${inches}″`, sub: '' };
-    }
-    return imperial
-      ? { main: kgToLb(value).toFixed(1), sub: 'lb' }
-      : { main: value.toFixed(1), sub: 'kg' };
-  };
-
-  const { main, sub } = display();
-  const bounds = kind === 'height' ? { min: 120, max: 220 } : { min: 35, max: 200 };
-
-  const nudge = (direction: 1 | -1) => {
-    const next = Math.min(bounds.max, Math.max(bounds.min, value + direction * stepMetric));
-    onChange(Number(next.toFixed(2)));
-  };
-
-  return (
-    <View style={{ alignItems: 'center', gap: 28 }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          borderRadius: 999,
-          borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.12)',
-          padding: 4,
-        }}
-      >
-        {(['metric', 'imperial'] as const).map((unit) => (
-          <Pressable
-            key={unit}
-            onPress={() => onUnits(unit)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: units === unit }}
-            style={{
-              paddingHorizontal: 20,
-              paddingVertical: 7,
-              borderRadius: 999,
-              backgroundColor: units === unit ? colors.accent.lime : 'transparent',
-            }}
-          >
-            <Text
-              style={{
-                color: units === unit ? colors.base['900'] : colors.text.secondary,
-                fontSize: 14,
-                fontWeight: '600',
-                textTransform: 'capitalize',
-              }}
-            >
-              {unit}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 26 }}>
-        <Stepper label={`Decrease ${kind}`} onPress={() => nudge(-1)}>
-          −
-        </Stepper>
-
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', minWidth: 150, justifyContent: 'center' }}>
-          <Text style={{ color: colors.text.primary, fontSize: 52, fontWeight: '700' }}>{main}</Text>
-          {sub ? (
-            <Text style={{ color: colors.text.secondary, fontSize: 19, marginLeft: 6, marginBottom: 8 }}>
-              {sub}
-            </Text>
-          ) : null}
-        </View>
-
-        <Stepper label={`Increase ${kind}`} onPress={() => nudge(1)}>
-          +
-        </Stepper>
-      </View>
-    </View>
-  );
-}
-
-function Stepper({
-  children,
-  onPress,
-  label,
-}: {
-  children: React.ReactNode;
-  onPress: () => void;
-  label: string;
-}) {
-  return (
-    <Pressable
-      onPress={() => {
-        void Haptics.selectionAsync();
-        onPress();
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{
-        width: 52,
-        height: 52,
-        borderRadius: 26,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.14)',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <Text style={{ color: colors.text.primary, fontSize: 26, lineHeight: 30 }}>{children}</Text>
-    </Pressable>
   );
 }

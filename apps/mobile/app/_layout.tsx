@@ -7,29 +7,44 @@ import { Stack } from 'expo-router/stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { colors } from '@nutrisnap/ui';
 import { SessionProvider } from '../src/lib/session';
+import { ThemeProvider, useTheme } from '../src/lib/theme';
+
+/**
+ * Split out because the navigator needs the palette, and a component cannot
+ * consume a context its own parent provides.
+ */
+function ThemedNavigator() {
+  const { theme, name } = useTheme();
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.base['900'] }}>
+      {/* Status bar text has to invert with the background or it disappears. */}
+      <StatusBar style={name === 'dark' ? 'light' : 'dark'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.base['900'] },
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="signin" options={{ animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </GestureHandlerRootView>
+  );
+}
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.base['900'] }}>
+    <ThemeProvider>
       <SafeAreaProvider>
         <SessionProvider>
-          <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.base['900'] },
-              animation: 'slide_from_right',
-            }}
-          >
-            <Stack.Screen name="index" />
-            <Stack.Screen name="onboarding" />
-            <Stack.Screen name="signin" options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="(tabs)" />
-          </Stack>
+          <ThemedNavigator />
         </SessionProvider>
       </SafeAreaProvider>
-    </GestureHandlerRootView>
+    </ThemeProvider>
   );
 }

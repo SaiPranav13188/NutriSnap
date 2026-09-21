@@ -2,9 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theming works through CSS variables rather than Tailwind's `dark:` variant,
+ * because almost every surface in this app is a translucent glass panel whose
+ * alpha has to change with the theme — not just its colour. Variables let one
+ * `.glass` rule serve both themes.
+ *
+ * `data-theme` is set on <html> by a blocking script in the root layout, so
+ * the correct palette is in place before first paint.
+ */
+
 @layer base {
-  :root {
+  :root,
+  :root[data-theme='dark'] {
     color-scheme: dark;
+
+    --base-900: #07090c;
+    --base-800: #0c1014;
+    --base-700: #12171d;
+    --base-600: #1a2029;
+    --base-500: #242c37;
+
+    --ink-primary: #f4f7fa;
+    --ink-secondary: #9aa6b4;
+    --ink-tertiary: #5f6b7a;
+
+    --accent-lime: #c6ff3d;
+    --accent-cyan: #3de8ff;
+
+    --macro-protein: #ff8a5b;
+    --macro-carbs: #5ba8ff;
+    --macro-fat: #ffd166;
+
+    --state-success: #43e6a0;
+    --state-warning: #ffc24b;
+    --state-danger: #ff5b6e;
+
+    --glass-fill: rgba(255, 255, 255, 0.045);
+    --glass-fill-strong: rgba(255, 255, 255, 0.075);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-border-strong: rgba(255, 255, 255, 0.16);
+    --glass-hover: rgba(255, 255, 255, 0.09);
+
+    --page-glow-a: rgba(198, 255, 61, 0.07);
+    --page-glow-b: rgba(61, 232, 255, 0.06);
+    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.42);
+  }
+
+  :root[data-theme='light'] {
+    color-scheme: light;
+
+    --base-900: #f6f8fa;
+    --base-800: #ffffff;
+    --base-700: #eef1f5;
+    --base-600: #e2e7ec;
+    --base-500: #d3dae2;
+
+    --ink-primary: #0d1117;
+    --ink-secondary: #49555f;
+    --ink-tertiary: #78848f;
+
+    /* Deepened so they stay legible as text and strokes on white. */
+    --accent-lime: #a8e01f;
+    --accent-cyan: #12c4e0;
+
+    --macro-protein: #d9531e;
+    --macro-carbs: #1f6fd0;
+    --macro-fat: #b07b08;
+
+    --state-success: #12855a;
+    --state-warning: #a56a00;
+    --state-danger: #c8354b;
+
+    /* White over grey, with a dark hairline — without it, cards vanish. */
+    --glass-fill: rgba(255, 255, 255, 0.72);
+    --glass-fill-strong: rgba(255, 255, 255, 0.92);
+    --glass-border: rgba(13, 17, 23, 0.09);
+    --glass-border-strong: rgba(13, 17, 23, 0.16);
+    --glass-hover: rgba(13, 17, 23, 0.04);
+
+    --page-glow-a: rgba(168, 224, 31, 0.1);
+    --page-glow-b: rgba(18, 196, 224, 0.09);
+    --shadow-glass: 0 8px 28px rgba(13, 17, 23, 0.08);
   }
 
   html,
@@ -14,12 +93,14 @@
 
   body {
     @apply bg-base-900 text-ink-primary antialiased;
-    /* Plan section 4: subtle grain and two ambient colour pools give the
-       flat charcoal some depth without adding visual noise. */
+    /* Two ambient colour pools give the flat background some depth. */
     background-image:
-      radial-gradient(900px 560px at 12% -8%, rgba(198, 255, 61, 0.07), transparent 62%),
-      radial-gradient(760px 520px at 92% 4%, rgba(61, 232, 255, 0.06), transparent 60%);
+      radial-gradient(900px 560px at 12% -8%, var(--page-glow-a), transparent 62%),
+      radial-gradient(760px 520px at 92% 4%, var(--page-glow-b), transparent 60%);
     background-attachment: fixed;
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease;
   }
 
   /* Tabular numerals stop big calorie counters from jittering as they animate. */
@@ -29,11 +110,11 @@
   }
 
   ::selection {
-    background: rgba(198, 255, 61, 0.28);
+    background: color-mix(in srgb, var(--accent-lime) 28%, transparent);
   }
 
   *:focus-visible {
-    outline: 2px solid theme('colors.accent.lime');
+    outline: 2px solid var(--accent-lime);
     outline-offset: 2px;
     border-radius: 6px;
   }
@@ -46,25 +127,25 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.09);
+    background: var(--glass-border);
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.16);
+    background: var(--glass-border-strong);
   }
 }
 
 @layer components {
   .glass {
-    background: rgba(255, 255, 255, 0.045);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-border);
     backdrop-filter: blur(18px) saturate(140%);
     -webkit-backdrop-filter: blur(18px) saturate(140%);
   }
 
   .glass-strong {
-    background: rgba(255, 255, 255, 0.075);
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: var(--glass-fill-strong);
+    border: 1px solid var(--glass-border-strong);
     backdrop-filter: blur(24px) saturate(160%);
     -webkit-backdrop-filter: blur(24px) saturate(160%);
   }
@@ -73,12 +154,21 @@
     @apply bg-accent bg-clip-text text-transparent;
   }
 
+  /* Hide the scrollbar on the horizontal date strip without losing scrolling. */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .skeleton {
     background: linear-gradient(
       90deg,
-      rgba(255, 255, 255, 0.04) 25%,
-      rgba(255, 255, 255, 0.09) 50%,
-      rgba(255, 255, 255, 0.04) 75%
+      var(--glass-fill) 25%,
+      var(--glass-fill-strong) 50%,
+      var(--glass-fill) 75%
     );
     background-size: 200% 100%;
     @apply animate-shimmer rounded-lg;

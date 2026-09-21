@@ -13,12 +13,13 @@ import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { PROGRESS_RANGES, type ProgressRange } from '@nutrisnap/core';
-import { colors } from '@nutrisnap/ui';
 import { api, ApiError, type ProgressResponse } from '../../src/lib/api';
 import { AnimatedNumber, Button, Card, ErrorNote, Screen } from '../../src/components/ui';
 import { WeightChart } from '../../src/components/WeightChart';
+import { useColors } from '../../src/lib/theme';
 
 export default function Progress() {
+  const c = useColors();
   const { width } = useWindowDimensions();
   const [range, setRange] = useState<ProgressRange>('90d');
   const [data, setData] = useState<ProgressResponse | null>(null);
@@ -76,7 +77,7 @@ export default function Progress() {
     return (
       <Screen>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={colors.accent.lime} />
+          <ActivityIndicator color={c.accent.lime} />
         </View>
       </Screen>
     );
@@ -99,13 +100,13 @@ export default function Progress() {
                 setRefreshing(true);
                 void load(range);
               }}
-              tintColor={colors.accent.lime}
+              tintColor={c.accent.lime}
             />
           }
         >
           <View>
-            <Text style={{ color: colors.text.primary, fontSize: 26, fontWeight: '700' }}>Progress</Text>
-            <Text style={{ color: colors.text.secondary, fontSize: 15, marginTop: 4 }}>
+            <Text style={{ color: c.text.primary, fontSize: 26, fontWeight: '700' }}>Progress</Text>
+            <Text style={{ color: c.text.secondary, fontSize: 15, marginTop: 4 }}>
               The long view on where you&apos;re heading.
             </Text>
           </View>
@@ -114,20 +115,20 @@ export default function Progress() {
 
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <Card style={{ flex: 1, padding: 16 }}>
-              <Text style={{ color: colors.text.secondary, fontSize: 13 }}>Current weight</Text>
+              <Text style={{ color: c.text.secondary, fontSize: 13 }}>Current weight</Text>
               {weight?.current_kg != null ? (
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 8 }}>
                   <AnimatedNumber
                     value={weight.current_kg}
                     decimals={1}
-                    style={{ color: colors.text.primary, fontSize: 30, fontWeight: '700' }}
+                    style={{ color: c.text.primary, fontSize: 30, fontWeight: '700' }}
                   />
-                  <Text style={{ color: colors.text.secondary, fontSize: 15, marginLeft: 5, marginBottom: 4 }}>
+                  <Text style={{ color: c.text.secondary, fontSize: 15, marginLeft: 5, marginBottom: 4 }}>
                     kg
                   </Text>
                 </View>
               ) : (
-                <Text style={{ color: colors.text.tertiary, fontSize: 15, marginTop: 10 }}>
+                <Text style={{ color: c.text.tertiary, fontSize: 15, marginTop: 10 }}>
                   Not logged yet
                 </Text>
               )}
@@ -135,10 +136,10 @@ export default function Progress() {
               {weight?.goal_progress != null && weight.goal_kg != null && (
                 <View style={{ marginTop: 12 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 11 }}>
+                    <Text style={{ color: c.text.tertiary, fontSize: 11 }}>
                       Goal {weight.goal_kg} kg
                     </Text>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 11 }}>
+                    <Text style={{ color: c.text.tertiary, fontSize: 11 }}>
                       {Math.round(weight.goal_progress * 100)}%
                     </Text>
                   </View>
@@ -146,7 +147,7 @@ export default function Progress() {
                     style={{
                       height: 7,
                       borderRadius: 4,
-                      backgroundColor: 'rgba(255,255,255,0.08)',
+                      backgroundColor: c.glass.DEFAULT,
                       marginTop: 6,
                       overflow: 'hidden',
                     }}
@@ -155,7 +156,7 @@ export default function Progress() {
                       style={{
                         width: `${Math.round(weight.goal_progress * 100)}%`,
                         height: '100%',
-                        backgroundColor: colors.accent.lime,
+                        backgroundColor: c.accent.lime,
                       }}
                     />
                   </View>
@@ -164,17 +165,17 @@ export default function Progress() {
             </Card>
 
             <Card style={{ flex: 1, padding: 16 }}>
-              <Text style={{ color: colors.text.secondary, fontSize: 13 }}>Logging streak</Text>
+              <Text style={{ color: c.text.secondary, fontSize: 13 }}>Logging streak</Text>
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 8 }}>
                 <AnimatedNumber
                   value={data?.streak.current_streak ?? 0}
-                  style={{ color: colors.text.primary, fontSize: 30, fontWeight: '700' }}
+                  style={{ color: c.text.primary, fontSize: 30, fontWeight: '700' }}
                 />
-                <Text style={{ color: colors.text.secondary, fontSize: 15, marginLeft: 5, marginBottom: 4 }}>
+                <Text style={{ color: c.text.secondary, fontSize: 15, marginLeft: 5, marginBottom: 4 }}>
                   {data?.streak.current_streak === 1 ? 'day' : 'days'}
                 </Text>
               </View>
-              <Text style={{ color: colors.text.secondary, fontSize: 12, marginTop: 6 }}>
+              <Text style={{ color: c.text.secondary, fontSize: 12, marginTop: 6 }}>
                 Longest: {data?.streak.longest_streak ?? 0} days
               </Text>
 
@@ -188,8 +189,8 @@ export default function Progress() {
                       borderRadius: 4,
                       backgroundColor:
                         i < Math.min(data?.streak.current_streak ?? 0, 7)
-                          ? colors.accent.lime
-                          : 'rgba(255,255,255,0.08)',
+                          ? c.accent.lime
+                          : c.glass.DEFAULT,
                     }}
                   />
                 ))}
@@ -199,7 +200,7 @@ export default function Progress() {
 
           {showForm ? (
             <Card style={{ padding: 16, gap: 10 }}>
-              <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600' }}>
+              <Text style={{ color: c.text.primary, fontSize: 15, fontWeight: '600' }}>
                 Log today&apos;s weight
               </Text>
               <TextInput
@@ -207,15 +208,15 @@ export default function Progress() {
                 onChangeText={setWeightInput}
                 keyboardType="decimal-pad"
                 placeholder="kg"
-                placeholderTextColor={colors.text.tertiary}
+                placeholderTextColor={c.text.tertiary}
                 autoFocus
                 style={{
                   height: 52,
                   borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.12)',
-                  backgroundColor: 'rgba(255,255,255,0.04)',
-                  color: colors.text.primary,
+                  borderColor: c.glass.border,
+                  backgroundColor: c.glass.DEFAULT,
+                  color: c.text.primary,
                   fontSize: 20,
                   textAlign: 'center',
                 }}
@@ -234,7 +235,7 @@ export default function Progress() {
           )}
 
           <Card style={{ padding: 18, gap: 14 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600' }}>
               Weight progress
             </Text>
 
@@ -255,12 +256,12 @@ export default function Progress() {
                       paddingVertical: 8,
                       borderRadius: 999,
                       alignItems: 'center',
-                      backgroundColor: active ? colors.accent.lime : 'rgba(255,255,255,0.05)',
+                      backgroundColor: active ? c.accent.lime : c.glass.DEFAULT,
                     }}
                   >
                     <Text
                       style={{
-                        color: active ? colors.base['900'] : colors.text.secondary,
+                        color: active ? c.base['900'] : c.text.secondary,
                         fontSize: 12,
                         fontWeight: '700',
                       }}
@@ -280,8 +281,8 @@ export default function Progress() {
             />
 
             {weight?.message && (
-              <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 16, padding: 14 }}>
-                <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 19 }}>
+              <View style={{ backgroundColor: c.glass.DEFAULT, borderRadius: 16, padding: 14 }}>
+                <Text style={{ color: c.text.secondary, fontSize: 13, lineHeight: 19 }}>
                   {weight.message}
                 </Text>
               </View>
@@ -289,7 +290,7 @@ export default function Progress() {
 
             {weight?.plateau.plateaued && weight.plateau.message && (
               <View style={{ backgroundColor: 'rgba(255,194,75,0.10)', borderRadius: 16, padding: 14 }}>
-                <Text style={{ color: colors.state.warning, fontSize: 13, lineHeight: 19 }}>
+                <Text style={{ color: c.state.warning, fontSize: 13, lineHeight: 19 }}>
                   {weight.plateau.message}
                 </Text>
               </View>
@@ -297,16 +298,16 @@ export default function Progress() {
           </Card>
 
           <Card style={{ padding: 18 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>
+            <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600' }}>
               Daily average calories
             </Text>
 
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12, marginTop: 12 }}>
               <AnimatedNumber
                 value={wow?.thisWeekAvg ?? 0}
-                style={{ color: colors.text.primary, fontSize: 32, fontWeight: '700' }}
+                style={{ color: c.text.primary, fontSize: 32, fontWeight: '700' }}
               />
-              <Text style={{ color: colors.text.secondary, fontSize: 15, marginBottom: 5 }}>kcal</Text>
+              <Text style={{ color: c.text.secondary, fontSize: 15, marginBottom: 5 }}>kcal</Text>
 
               {wow && wow.lastWeekAvg > 0 && (
                 <View
@@ -321,7 +322,7 @@ export default function Progress() {
                 >
                   <Text
                     style={{
-                      color: wow.percentChange > 0 ? colors.state.warning : colors.state.success,
+                      color: wow.percentChange > 0 ? c.state.warning : c.state.success,
                       fontSize: 11,
                       fontWeight: '600',
                     }}
@@ -332,7 +333,7 @@ export default function Progress() {
               )}
             </View>
 
-            <Text style={{ color: colors.text.secondary, fontSize: 13, marginTop: 8, lineHeight: 19 }}>
+            <Text style={{ color: c.text.secondary, fontSize: 13, marginTop: 8, lineHeight: 19 }}>
               {calories?.target
                 ? `Your target is ${Math.round(calories.target)} kcal a day.`
                 : 'Finish onboarding to set a target.'}

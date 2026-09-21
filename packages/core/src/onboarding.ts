@@ -7,6 +7,7 @@
  */
 
 import { DEFAULT_RATE_KG_PER_WEEK } from './constants.js';
+import { ageInYears } from './calendar.js';
 import type {
   ActivityLevel,
   DietaryPreference,
@@ -147,9 +148,9 @@ export function validateStep(id: StepId, answers: OnboardingAnswers): string | n
       if (!answers.date_of_birth) return 'Enter your date of birth.';
       const dob = new Date(answers.date_of_birth);
       if (Number.isNaN(dob.getTime())) return "That date doesn't look right.";
-      const age = (Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000);
+      const age = ageInYears(dob);
+      if (age < 0 || age > 120) return "That date doesn't look right.";
       if (age < 13) return 'NutriSnap is for ages 13 and up.';
-      if (age > 120) return "That date doesn't look right.";
       return null;
     }
     case 'height':

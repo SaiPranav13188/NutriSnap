@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 // Same story as Stack: the root export of Tabs is deprecated in Expo Router 57
 // and points here instead.
 import { Tabs } from 'expo-router/js-tabs';
-import { colors } from '@nutrisnap/ui';
+import { useColors } from '../../src/lib/theme';
 import { useSession } from '../../src/lib/session';
 
 /** A tiny glyph-based tab icon — avoids pulling in an icon font package. */
@@ -13,6 +13,7 @@ function TabIcon({ glyph, color }: { glyph: string; color: ColorValue }) {
 }
 
 export default function TabsLayout() {
+  const c = useColors();
   const { session, loading } = useSession();
 
   // Guard the whole tab group: no session, no app.
@@ -24,12 +25,12 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.accent.lime,
-        tabBarInactiveTintColor: colors.text.tertiary,
-        sceneStyle: { backgroundColor: colors.base['900'] },
+        tabBarActiveTintColor: c.accent.lime,
+        tabBarInactiveTintColor: c.text.tertiary,
+        sceneStyle: { backgroundColor: c.base['900'] },
         tabBarStyle: {
-          backgroundColor: colors.base['800'],
-          borderTopColor: 'rgba(255,255,255,0.08)',
+          backgroundColor: c.base['800'],
+          borderTopColor: c.glass.DEFAULT,
           height: 86,
           paddingTop: 8,
         },

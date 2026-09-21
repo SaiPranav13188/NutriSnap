@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
-import { colors } from '@nutrisnap/ui';
 import type { SeriesPoint } from '../lib/api';
+import { useColors } from '../lib/theme';
 
 interface WeightChartProps {
   series: SeriesPoint[];
@@ -22,13 +22,14 @@ interface WeightChartProps {
  * no custom dev client — and it gives exact control over the bio-glass look.
  */
 export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: WeightChartProps) {
+  const c = useColors();
   const [active, setActive] = useState<number | null>(null);
 
   if (series.length === 0) {
     return (
       <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: colors.text.secondary, fontSize: 14 }}>No weigh-ins yet.</Text>
-        <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4 }}>
+        <Text style={{ color: c.text.secondary, fontSize: 14 }}>No weigh-ins yet.</Text>
+        <Text style={{ color: c.text.tertiary, fontSize: 13, marginTop: 4 }}>
           Log your weight and your trend will start here.
         </Text>
       </View>
@@ -76,8 +77,8 @@ export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: 
       <Svg width={width} height={height}>
         <Defs>
           <LinearGradient id="weightArea" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={colors.accent.lime} stopOpacity={0.3} />
-            <Stop offset="100%" stopColor={colors.accent.cyan} stopOpacity={0.02} />
+            <Stop offset="0%" stopColor={c.accent.lime} stopOpacity={0.3} />
+            <Stop offset="100%" stopColor={c.accent.cyan} stopOpacity={0.02} />
           </LinearGradient>
         </Defs>
 
@@ -88,13 +89,13 @@ export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: 
               y1={y(value)}
               x2={width - padding.right}
               y2={y(value)}
-              stroke="rgba(255,255,255,0.055)"
+              stroke={c.glass.border}
               strokeWidth={1}
             />
             <SvgText
               x={padding.left - 8}
               y={y(value) + 4}
-              fill={colors.text.tertiary}
+              fill={c.text.tertiary}
               fontSize={10}
               textAnchor="end"
             >
@@ -110,7 +111,7 @@ export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: 
               y1={y(goalKg)}
               x2={width - padding.right}
               y2={y(goalKg)}
-              stroke={colors.accent.cyan}
+              stroke={c.accent.cyan}
               strokeWidth={1.4}
               strokeDasharray="5,5"
               strokeOpacity={0.8}
@@ -118,7 +119,7 @@ export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: 
             <SvgText
               x={width - padding.right}
               y={y(goalKg) - 6}
-              fill={colors.accent.cyan}
+              fill={c.accent.cyan}
               fontSize={10}
               textAnchor="end"
             >
@@ -128,12 +129,12 @@ export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: 
         )}
 
         <Path d={areaPath} fill="url(#weightArea)" />
-        <Path d={linePath} stroke={colors.accent.lime} strokeWidth={2} fill="none" />
+        <Path d={linePath} stroke={c.accent.lime} strokeWidth={2} fill="none" />
 
         {trendPath && (
           <Path
             d={trendPath}
-            stroke={colors.accent.cyan}
+            stroke={c.accent.cyan}
             strokeWidth={1.4}
             strokeOpacity={0.55}
             fill="none"
@@ -157,8 +158,8 @@ export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: 
             cx={x(active)}
             cy={y(series[active]!.value)}
             r={5}
-            fill={colors.accent.lime}
-            stroke={colors.base['900']}
+            fill={c.accent.lime}
+            stroke={c.base['900']}
             strokeWidth={2}
           />
         )}
@@ -166,7 +167,7 @@ export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: 
         <SvgText
           x={padding.left}
           y={height - 6}
-          fill={colors.text.tertiary}
+          fill={c.text.tertiary}
           fontSize={10}
           textAnchor="start"
         >
@@ -175,7 +176,7 @@ export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: 
         <SvgText
           x={width - padding.right}
           y={height - 6}
-          fill={colors.text.tertiary}
+          fill={c.text.tertiary}
           fontSize={10}
           textAnchor="end"
         >
@@ -188,13 +189,13 @@ export function WeightChart({ series, trendLine, goalKg, width, height = 210 }: 
           style={{
             marginTop: 8,
             alignSelf: 'center',
-            backgroundColor: 'rgba(255,255,255,0.06)',
+            backgroundColor: c.glass.DEFAULT,
             borderRadius: 999,
             paddingHorizontal: 14,
             paddingVertical: 7,
           }}
         >
-          <Text style={{ color: colors.text.primary, fontSize: 13 }}>
+          <Text style={{ color: c.text.primary, fontSize: 13 }}>
             {formatDate(activePoint.date)} · {activePoint.value.toFixed(1)} kg
           </Text>
         </View>

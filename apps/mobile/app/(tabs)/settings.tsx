@@ -9,12 +9,13 @@ import {
   type DailyTarget,
   type Profile,
 } from '@nutrisnap/core';
-import { colors } from '@nutrisnap/ui';
 import { api, ApiError } from '../../src/lib/api';
 import { supabase } from '../../src/lib/supabase';
 import { Button, Card, ErrorNote, Screen } from '../../src/components/ui';
+import { useColors } from '../../src/lib/theme';
 
 export default function Settings() {
+  const c = useColors();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [targets, setTargets] = useState<DailyTarget | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,7 +73,7 @@ export default function Settings() {
     return (
       <Screen>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={colors.accent.lime} />
+          <ActivityIndicator color={c.accent.lime} />
         </View>
       </Screen>
     );
@@ -85,8 +86,8 @@ export default function Settings() {
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: 40 }}>
           <View>
-            <Text style={{ color: colors.text.primary, fontSize: 26, fontWeight: '700' }}>Settings</Text>
-            <Text style={{ color: colors.text.secondary, fontSize: 15, marginTop: 4 }}>
+            <Text style={{ color: c.text.primary, fontSize: 26, fontWeight: '700' }}>Settings</Text>
+            <Text style={{ color: c.text.secondary, fontSize: 15, marginTop: 4 }}>
               Your plan, your data, your account.
             </Text>
           </View>
@@ -94,12 +95,12 @@ export default function Settings() {
           {error && <ErrorNote message={error} />}
           {notice && (
             <View style={{ backgroundColor: 'rgba(67,230,160,0.10)', borderRadius: 18, padding: 14 }}>
-              <Text style={{ color: colors.state.success, fontSize: 14 }}>{notice}</Text>
+              <Text style={{ color: c.state.success, fontSize: 14 }}>{notice}</Text>
             </View>
           )}
 
           <Card style={{ padding: 18, gap: 14 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>Your plan</Text>
+            <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600' }}>Your plan</Text>
 
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
               <Stat label="Calories" value={targets ? `${Math.round(targets.calories)} kcal` : '—'} />
@@ -131,7 +132,7 @@ export default function Settings() {
           </Card>
 
           <Card style={{ padding: 18, gap: 14 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>Your body</Text>
+            <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600' }}>Your body</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
               <Stat label="Height" value={profile?.height_cm ? formatHeight(profile.height_cm, units) : '—'} />
               <Stat
@@ -150,8 +151,8 @@ export default function Settings() {
           </Card>
 
           <Card style={{ padding: 18, gap: 12 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>Goal</Text>
-            <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 19 }}>
+            <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600' }}>Goal</Text>
+            <Text style={{ color: c.text.secondary, fontSize: 13, lineHeight: 19 }}>
               Changing this recalculates your calorie and macro targets straight away.
             </Text>
 
@@ -169,7 +170,7 @@ export default function Settings() {
           </Card>
 
           <Card style={{ padding: 18, gap: 12 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>Units</Text>
+            <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600' }}>Units</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {(['metric', 'imperial'] as const).map((unit) => (
                 <Chip
@@ -184,8 +185,8 @@ export default function Settings() {
           </Card>
 
           <Card style={{ padding: 18, gap: 12 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>Your data</Text>
-            <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 19 }}>
+            <Text style={{ color: c.text.primary, fontSize: 16, fontWeight: '600' }}>Your data</Text>
+            <Text style={{ color: c.text.secondary, fontSize: 13, lineHeight: 19 }}>
               Everything NutriSnap holds about you — profile, targets, every meal and weigh-in.
             </Text>
             <Button variant="glass" loading={busy === 'export'} onPress={exportData}>
@@ -205,7 +206,7 @@ export default function Settings() {
 
           <Text
             style={{
-              color: colors.text.tertiary,
+              color: c.text.tertiary,
               fontSize: 12,
               lineHeight: 18,
               textAlign: 'center',
@@ -224,12 +225,13 @@ export default function Settings() {
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
+  const c = useColors();
   return (
     <View style={{ minWidth: '42%' }}>
-      <Text style={{ color: colors.text.tertiary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+      <Text style={{ color: c.text.tertiary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8 }}>
         {label}
       </Text>
-      <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600', marginTop: 2 }}>
+      <Text style={{ color: c.text.primary, fontSize: 15, fontWeight: '600', marginTop: 2 }}>
         {value}
       </Text>
     </View>
@@ -247,6 +249,7 @@ function Chip({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const c = useColors();
   return (
     <Pressable
       onPress={onPress}
@@ -258,14 +261,14 @@ function Chip({
         paddingVertical: 10,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: active ? 'rgba(198,255,61,0.6)' : 'rgba(255,255,255,0.12)',
+        borderColor: active ? 'rgba(198,255,61,0.6)' : c.glass.border,
         backgroundColor: active ? 'rgba(198,255,61,0.10)' : 'transparent',
         opacity: disabled ? 0.5 : 1,
       }}
     >
       <Text
         style={{
-          color: active ? colors.text.primary : colors.text.secondary,
+          color: active ? c.text.primary : c.text.secondary,
           fontSize: 14,
           textTransform: 'capitalize',
         }}
