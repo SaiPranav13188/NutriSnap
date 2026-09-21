@@ -12,6 +12,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#07090C"
     },
+    "platforms": ["ios", "android"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nutrisnap.app",
@@ -27,10 +28,6 @@
         "backgroundColor": "#07090C"
       },
       "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "single"
     },
     "plugins": [
       "expo-router",

@@ -8,7 +8,6 @@
     "start:usb": "node scripts/start-usb.mjs",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "doctor": "npx expo-doctor"
