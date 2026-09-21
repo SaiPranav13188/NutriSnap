@@ -4,10 +4,14 @@ import { router } from 'expo-router';
 // Same story as Stack: the root export of Tabs is deprecated in Expo Router 57
 // and points here instead.
 import { Tabs } from 'expo-router/js-tabs';
+import { HomeIcon, ProgressIcon, ScanIcon } from '../../src/components/TabIcons';
 import { useColors } from '../../src/lib/theme';
 import { useSession } from '../../src/lib/session';
 
-/** A tiny glyph-based tab icon — avoids pulling in an icon font package. */
+/**
+ * Settings keeps its glyph: a cog already reads as settings, where the shapes
+ * the other three carried did not. Still no icon font in the bundle.
+ */
 function TabIcon({ glyph, color }: { glyph: string; color: ColorValue }) {
   return <Text style={{ fontSize: 20, color }}>{glyph}</Text>;
 }
@@ -41,21 +45,21 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <TabIcon glyph="◎" color={color} />,
+          tabBarIcon: ({ color, focused }) => <HomeIcon color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="scan"
         options={{
           title: 'Scan',
-          tabBarIcon: ({ color }) => <TabIcon glyph="◉" color={color} />,
+          tabBarIcon: ({ color, focused }) => <ScanIcon color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="progress"
         options={{
           title: 'Progress',
-          tabBarIcon: ({ color }) => <TabIcon glyph="◈" color={color} />,
+          tabBarIcon: ({ color, focused }) => <ProgressIcon color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
