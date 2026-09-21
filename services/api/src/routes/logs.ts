@@ -61,7 +61,37 @@ export async function logRoutes(app: FastifyInstance): Promise<void> {
     const logs = (data ?? []) as FoodLog[];
     const targets = await getOrCreateTargets(request.db, request.user.id);
 
-    return { date, logs, totals: sumTotals(logs), targets };
+    // Rollovers touching this day: what was carried in from yesterday, and
+    // whether today's own leftovers have already been pushed forward. Both
+    // come back as facts rather than folded into the target, so the screen
+    // can show where an unusual allowance came from.
+    const { data: rolloverRows, error: rolloverError } = await request.db
+      .from('calorie_rollovers')
+      .select('from_date, to_date, amount_kcal')
+      .eq('user_id', request.user.id)
+      .or(`from_date.eq.${date},to_date.eq.${date}`);
+
+    // A missing table here must not take the whole day down: the rest of
+    // this response is what the dashboard is actually for.
+    const rollovers = rolloverError ? [] : (rolloverRows ?? []);
+
+    const carriedIn = rollovers
+      .filter((r) => r.to_date === date)
+      .reduce((sum, r) => sum + Number(r.amount_kcal ?? 0), 0);
+
+    const pushedOut = rollovers.find((r) => r.from_date === date) ?? null;
+
+    return {
+      date,
+      logs,
+      totals: sumTotals(logs),
+      targets,
+      rollover: {
+        carried_in_kcal: carriedIn,
+        pushed_out_kcal: pushedOut ? Number(pushedOut.amount_kcal) : 0,
+        already_pushed: pushedOut !== null,
+      },
+    };
   });
 
   /** Commit a reviewed analysis (or a manual entry) to the diary. */

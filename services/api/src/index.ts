@@ -11,6 +11,7 @@ import { progressRoutes } from './routes/progress.js';
 import { activityRoutes } from './routes/activity.js';
 import { photoRoutes } from './routes/photos.js';
 import { coachRoutes } from './routes/coach.js';
+import { rolloverRoutes } from './routes/rollover.js';
 
 const app = Fastify({
   logger: isProduction
@@ -84,6 +85,7 @@ await app.register(progressRoutes);
 await app.register(activityRoutes);
 await app.register(photoRoutes);
 await app.register(coachRoutes);
+await app.register(rolloverRoutes);
 
 try {
   await app.listen({ port: env.PORT, host: env.HOST });

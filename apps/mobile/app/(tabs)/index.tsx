@@ -24,7 +24,7 @@ import {
   type MacroTotals,
 } from '@nutrisnap/core';
 import { macroGradientsFor, microGradientsFor } from '@nutrisnap/ui';
-import { api, ApiError, type DayTotals } from '../../src/lib/api';
+import { api, ApiError, type DayRollover, type DayTotals } from '../../src/lib/api';
 import {
   AnimatedNumber,
   Button,
@@ -37,6 +37,7 @@ import { ProgressRing } from '../../src/components/ProgressRing';
 import { DateStrip } from '../../src/components/DateStrip';
 import { WaterCard } from '../../src/components/WaterCard';
 import { FavouritesStrip } from '../../src/components/FavouritesStrip';
+import { RolloverBox } from '../../src/components/RolloverBox';
 import { ThemeToggle } from '../../src/components/ThemeToggle';
 import { useColors } from '../../src/lib/theme';
 import { clearStoredAnswers, readStoredAnswers } from '../../src/lib/session';
@@ -139,6 +140,11 @@ export default function Dashboard() {
   const [totals, setTotals] = useState<MacroTotals>(EMPTY_TOTALS);
   const [targets, setTargets] = useState<DailyTarget | null>(null);
   const [logs, setLogs] = useState<FoodLog[]>([]);
+  const [rollover, setRollover] = useState<DayRollover>({
+    carried_in_kcal: 0,
+    pushed_out_kcal: 0,
+    already_pushed: false,
+  });
   const [week, setWeek] = useState<DayTotals[]>([]);
   const [streak, setStreak] = useState(0);
   const [waterMl, setWaterMl] = useState(0);
@@ -173,6 +179,7 @@ export default function Dashboard() {
         setTotals(day.totals);
         setTargets(day.targets);
         setLogs(day.logs);
+        setRollover(day.rollover);
 
         // 90 days of history feeds the scrollable strip's completion rings.
         // All of these decorate the day rather than constituting it, so they
@@ -224,7 +231,11 @@ export default function Dashboard() {
     );
   }
 
-  const calories = ringProgress(totals.calories, targets?.calories ?? 0);
+  // Calories carried in from yesterday are part of today's allowance, so the
+  // ring has to measure against the total. Leaving them out would show a day
+  // as over target while the box above it said there was room.
+  const effectiveTarget = (targets?.calories ?? 0) + rollover.carried_in_kcal;
+  const calories = ringProgress(totals.calories, effectiveTarget);
 
   // Fibre, sugar and sodium have no stored goals — they are derived from the
   // calorie target, so they stay correct after a plan change.
@@ -369,7 +380,7 @@ export default function Dashboard() {
                             {calories.over ? 'over' : 'remaining'}
                           </Text>
                           <Text style={{ color: c.text.tertiary, fontSize: 13, marginTop: 8 }}>
-                            {Math.round(totals.calories)} / {Math.round(targets.calories)} kcal
+                            {Math.round(totals.calories)} / {Math.round(effectiveTarget)} kcal
                           </Text>
                         </View>
                       </ProgressRing>
@@ -406,6 +417,15 @@ export default function Dashboard() {
                           delay={320}
                         />
                       </View>
+
+                      <RolloverBox
+                        date={date}
+                        consumed={totals.calories}
+                        target={targets.calories}
+                        rollover={rollover}
+                        onChange={() => void load(date)}
+                        onError={setError}
+                      />
                     </Card>
                   </View>
 

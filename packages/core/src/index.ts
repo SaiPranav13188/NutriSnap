@@ -7,6 +7,7 @@ export * from './calendar.js';
 export * from './health.js';
 export * from './insights.js';
 export * from './activity.js';
+export * from './rollover.js';
 export * from './adaptive.js';
 export * from './units.js';
 export * from './onboarding.js';

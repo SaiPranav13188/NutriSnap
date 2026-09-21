@@ -80,11 +80,20 @@ export interface AnalysisResponse {
   photo_url: string | null;
 }
 
+export interface DayRollover {
+  /** Carried in from the day before. */
+  carried_in_kcal: number;
+  /** Already moved out of this day into the next. */
+  pushed_out_kcal: number;
+  already_pushed: boolean;
+}
+
 export interface DayResponse {
   date: string;
   logs: FoodLog[];
   totals: MacroTotals;
   targets: DailyTarget | null;
+  rollover: DayRollover;
 }
 
 export interface DayTotals {
@@ -270,6 +279,12 @@ export const api = {
     request<void>(`/api/progress/photos/${id}`, { method: 'DELETE' }),
 
   // --- Coach -------------------------------------------------------------
+
+  pushRollover: (date: string) =>
+    post<{ rollover: { amount_kcal: number } }>('/api/rollover', { date }),
+
+  undoRollover: (date: string) =>
+    request<void>(`/api/rollover/${date}`, { method: 'DELETE' }),
 
   getCoachPrompts: () => request<{ prompts: string[] }>('/api/coach/prompts'),
 
