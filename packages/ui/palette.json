@@ -23,6 +23,11 @@
     "carbs": "#5BA8FF",
     "fat": "#FFD166"
   },
+  "micro": {
+    "fiber": "#9B8CFF",
+    "sugar": "#FF7AB8",
+    "sodium": "#F0A93B"
+  },
   "text": {
     "primary": "#F4F7FA",
     "secondary": "#9AA6B4",

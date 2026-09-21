@@ -237,3 +237,32 @@ export function Screen({ children, style, ...props }: ViewProps) {
     </View>
   );
 }
+
+/**
+ * Page indicator for a horizontally paged card.
+ *
+ * Without it a swipeable card looks like a static one — there is nothing on
+ * screen to say a second page exists, so nobody swipes.
+ */
+export function PagerDots({ count, active }: { count: number; active: number }) {
+  const c = useColors();
+  return (
+    <View
+      style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginTop: 12 }}
+      accessibilityRole="tablist"
+      accessibilityLabel={`Page ${active + 1} of ${count}`}
+    >
+      {Array.from({ length: count }, (_, i) => (
+        <View
+          key={i}
+          style={{
+            width: i === active ? 18 : 6,
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: i === active ? c.text.primary : c.glass.borderStrong,
+          }}
+        />
+      ))}
+    </View>
+  );
+}

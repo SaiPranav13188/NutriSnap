@@ -1,31 +1,138 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
   EMPTY_TOTALS,
   describeDate,
+  healthScore,
+  microTargets,
   ringProgress,
   todayKey,
   type DailyTarget,
   type FoodLog,
   type MacroTotals,
 } from '@nutrisnap/core';
-import { macroGradientsFor } from '@nutrisnap/ui';
+import { macroGradientsFor, microGradientsFor } from '@nutrisnap/ui';
 import { api, ApiError, type DayTotals } from '../../src/lib/api';
-import { AnimatedNumber, Button, Card, ErrorNote, Screen } from '../../src/components/ui';
+import {
+  AnimatedNumber,
+  Button,
+  Card,
+  ErrorNote,
+  PagerDots,
+  Screen,
+} from '../../src/components/ui';
 import { ProgressRing } from '../../src/components/ProgressRing';
 import { DateStrip } from '../../src/components/DateStrip';
 import { ThemeToggle } from '../../src/components/ThemeToggle';
 import { useColors } from '../../src/lib/theme';
 import { clearStoredAnswers, readStoredAnswers } from '../../src/lib/session';
 
+/**
+ * One labelled ring: what has been eaten, against its goal, with the
+ * remainder underneath.
+ *
+ * Shared by both summary pages so the macro row and the fibre/sugar/sodium
+ * row read as the same control seen twice, rather than two that merely
+ * resemble each other.
+ */
+function NutrientRing({
+  label,
+  icon,
+  eaten,
+  target,
+  color,
+  gradient,
+  gradientId,
+  delay,
+  unit = 'g',
+}: {
+  label: string;
+  /** Sits inside the ring, where the reading used to be. */
+  icon: string;
+  eaten: number;
+  target: number;
+  color: string;
+  gradient: { from: string; to: string };
+  gradientId: string;
+  delay: number;
+  unit?: 'g' | 'mg';
+}) {
+  const c = useColors();
+  const progress = ringProgress(eaten, target);
+
+  return (
+    <View
+      style={{ flex: 1, alignItems: 'center', gap: 4 }}
+      accessible
+      accessibilityLabel={`${label}, ${Math.round(eaten)} of ${Math.round(target)} ${unit}`}
+    >
+      {/* The reading sits above the ring rather than inside it, which frees the
+          centre for an icon that identifies the nutrient at a glance. */}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+        {/* Sodium reads in the thousands against a four-digit goal. Shrinking
+            to fit keeps it on one line without making the other five smaller
+            to match a case that only affects one of them. */}
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+          style={{ color: c.text.primary, fontSize: 17, fontWeight: '700' }}
+        >
+          {Math.round(eaten)}
+        </Text>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+          style={{ color: c.text.tertiary, fontSize: 11, marginLeft: 2 }}
+        >
+          /{Math.round(target)}
+          {unit}
+        </Text>
+      </View>
+
+      <Text style={{ color, fontSize: 11, fontWeight: '600' }}>{label}</Text>
+
+      <ProgressRing
+        ratio={progress.ratio}
+        size={72}
+        strokeWidth={6}
+        from={gradient.from}
+        to={gradient.to}
+        delay={delay}
+        gradientId={gradientId}
+      >
+        <Text style={{ fontSize: 26 }}>{icon}</Text>
+      </ProgressRing>
+
+      <Text style={{ color: c.text.tertiary, fontSize: 10 }}>
+        {Math.max(0, Math.round(progress.remaining))}
+        {unit} left
+      </Text>
+    </View>
+  );
+}
+
 export default function Dashboard() {
   const c = useColors();
+  const { width } = useWindowDimensions();
   const macroGradients = macroGradientsFor(c);
+  const microGradients = microGradientsFor(c);
 
   const [date, setDate] = useState(() => todayKey());
+  /** Which summary page is showing: 0 macros, 1 micros and the score. */
+  const [page, setPage] = useState(0);
   const [totals, setTotals] = useState<MacroTotals>(EMPTY_TOTALS);
   const [targets, setTargets] = useState<DailyTarget | null>(null);
   const [logs, setLogs] = useState<FoodLog[]>([]);
@@ -101,6 +208,13 @@ export default function Dashboard() {
   }
 
   const calories = ringProgress(totals.calories, targets?.calories ?? 0);
+
+  // Fibre, sugar and sodium have no stored goals — they are derived from the
+  // calorie target, so they stay correct after a plan change.
+  const micro = microTargets(targets?.calories ?? 0);
+  const health = healthScore(totals, targets);
+  const scoreColor =
+    health.score >= 8 ? c.state.success : health.score >= 5 ? c.state.warning : c.state.danger;
 
   return (
     <Screen>
@@ -195,91 +309,170 @@ export default function Dashboard() {
                 targetCalories={targets.calories}
               />
 
-              <View style={{ paddingHorizontal: 20 }}>
-                <Card style={{ padding: 24, alignItems: 'center', gap: 28 }}>
-                  <ProgressRing
-                    ratio={calories.ratio}
-                    size={230}
-                    strokeWidth={17}
-                    from={c.accent.lime}
-                    to={c.accent.cyan}
-                    gradientId="calorieRing"
-                  >
-                    <View style={{ alignItems: 'center' }}>
-                      <AnimatedNumber
-                        value={Math.abs(Math.round(calories.remaining))}
-                        style={{
-                          color: calories.over ? c.state.danger : c.text.primary,
-                          fontSize: 50,
-                          fontWeight: '700',
-                        }}
-                      />
-                      <Text
-                        style={{
-                          color: c.text.secondary,
-                          fontSize: 11,
-                          letterSpacing: 2,
-                          textTransform: 'uppercase',
-                          marginTop: 6,
-                        }}
+              <View>
+                <ScrollView
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  scrollEventThrottle={16}
+                  onMomentumScrollEnd={(event) =>
+                    setPage(Math.round(event.nativeEvent.contentOffset.x / width))
+                  }
+                >
+                  {/* Page one: the day at a glance. */}
+                  <View style={{ width, paddingHorizontal: 20 }}>
+                    <Card style={{ padding: 20, alignItems: 'center', gap: 22 }}>
+                      <ProgressRing
+                        ratio={calories.ratio}
+                        size={230}
+                        strokeWidth={17}
+                        from={c.accent.lime}
+                        to={c.accent.cyan}
+                        gradientId="calorieRing"
                       >
-                        {calories.over ? 'over' : 'remaining'}
-                      </Text>
-                      <Text style={{ color: c.text.tertiary, fontSize: 13, marginTop: 8 }}>
-                        {Math.round(totals.calories)} / {Math.round(targets.calories)} kcal
-                      </Text>
-                    </View>
-                  </ProgressRing>
-
-                  <View style={{ flexDirection: 'row', gap: 20 }}>
-                    {(
-                      [
-                        {
-                          key: 'protein',
-                          label: 'Protein',
-                          eaten: totals.protein_g,
-                          target: targets.protein_g,
-                        },
-                        {
-                          key: 'carbs',
-                          label: 'Carbs',
-                          eaten: totals.carbs_g,
-                          target: targets.carbs_g,
-                        },
-                        { key: 'fat', label: 'Fat', eaten: totals.fat_g, target: targets.fat_g },
-                      ] as const
-                    ).map((macro, i) => {
-                      const progress = ringProgress(macro.eaten, macro.target);
-                      return (
-                        <View key={macro.key} style={{ alignItems: 'center', gap: 6 }}>
-                          <ProgressRing
-                            ratio={progress.ratio}
-                            size={72}
-                            strokeWidth={6}
-                            from={macroGradients[macro.key].from}
-                            to={macroGradients[macro.key].to}
-                            delay={140 + i * 90}
-                            gradientId={`macro-${macro.key}`}
-                          >
-                            <Text
-                              style={{ color: c.text.primary, fontSize: 14, fontWeight: '700' }}
-                            >
-                              {Math.round(macro.eaten)}g
-                            </Text>
-                          </ProgressRing>
+                        <View style={{ alignItems: 'center' }}>
+                          <AnimatedNumber
+                            value={Math.abs(Math.round(calories.remaining))}
+                            style={{
+                              color: calories.over ? c.state.danger : c.text.primary,
+                              fontSize: 50,
+                              fontWeight: '700',
+                            }}
+                          />
                           <Text
-                            style={{ color: c.macro[macro.key], fontSize: 11, fontWeight: '600' }}
+                            style={{
+                              color: c.text.secondary,
+                              fontSize: 11,
+                              letterSpacing: 2,
+                              textTransform: 'uppercase',
+                              marginTop: 6,
+                            }}
                           >
-                            {macro.label}
+                            {calories.over ? 'over' : 'remaining'}
                           </Text>
-                          <Text style={{ color: c.text.tertiary, fontSize: 10 }}>
-                            {Math.max(0, Math.round(progress.remaining))}g left
+                          <Text style={{ color: c.text.tertiary, fontSize: 13, marginTop: 8 }}>
+                            {Math.round(totals.calories)} / {Math.round(targets.calories)} kcal
                           </Text>
                         </View>
-                      );
-                    })}
+                      </ProgressRing>
+
+                      <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch' }}>
+                        <NutrientRing
+                          label="Protein"
+                          icon={'\uD83C\uDF57'}
+                          eaten={totals.protein_g}
+                          target={targets.protein_g}
+                          color={c.macro.protein}
+                          gradient={macroGradients.protein}
+                          gradientId="macro-protein"
+                          delay={140}
+                        />
+                        <NutrientRing
+                          label="Carbs"
+                          icon={'\uD83C\uDF3E'}
+                          eaten={totals.carbs_g}
+                          target={targets.carbs_g}
+                          color={c.macro.carbs}
+                          gradient={macroGradients.carbs}
+                          gradientId="macro-carbs"
+                          delay={230}
+                        />
+                        <NutrientRing
+                          label="Fat"
+                          icon={'\uD83E\uDD51'}
+                          eaten={totals.fat_g}
+                          target={targets.fat_g}
+                          color={c.macro.fat}
+                          gradient={macroGradients.fat}
+                          gradientId="macro-fat"
+                          delay={320}
+                        />
+                      </View>
+                    </Card>
                   </View>
-                </Card>
+
+                  {/* Page two: what the headline numbers leave out. */}
+                  <View style={{ width, paddingHorizontal: 20 }}>
+                    <Card style={{ padding: 20, gap: 22 }}>
+                      <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch' }}>
+                        <NutrientRing
+                          label="Fiber"
+                          icon={'\uD83E\uDD66'}
+                          eaten={totals.fiber_g}
+                          target={micro.fiber_g}
+                          color={c.micro.fiber}
+                          gradient={microGradients.fiber}
+                          gradientId="micro-fiber"
+                          delay={140}
+                        />
+                        <NutrientRing
+                          label="Sugar"
+                          icon={'\uD83C\uDF6C'}
+                          eaten={totals.sugar_g}
+                          target={micro.sugar_g}
+                          color={c.micro.sugar}
+                          gradient={microGradients.sugar}
+                          gradientId="micro-sugar"
+                          delay={230}
+                        />
+                        <NutrientRing
+                          label="Sodium"
+                          icon={'\uD83E\uDDC2'}
+                          eaten={totals.sodium_mg}
+                          target={micro.sodium_mg}
+                          color={c.micro.sodium}
+                          gradient={microGradients.sodium}
+                          gradientId="micro-sodium"
+                          delay={320}
+                          unit="mg"
+                        />
+                      </View>
+
+                      <View style={{ gap: 10 }}>
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'baseline',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <Text style={{ color: c.text.primary, fontSize: 17, fontWeight: '700' }}>
+                            Health score
+                          </Text>
+                          <Text style={{ color: scoreColor, fontSize: 17, fontWeight: '700' }}>
+                            {health.score}/10
+                          </Text>
+                        </View>
+
+                        <View
+                          style={{
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: c.glass.DEFAULT,
+                            overflow: 'hidden',
+                          }}
+                          accessibilityRole="progressbar"
+                          accessibilityValue={{ min: 0, max: 10, now: health.score }}
+                        >
+                          <View
+                            style={{
+                              width: `${health.score * 10}%`,
+                              height: '100%',
+                              borderRadius: 4,
+                              backgroundColor: scoreColor,
+                            }}
+                          />
+                        </View>
+
+                        <Text style={{ color: c.text.secondary, fontSize: 13, lineHeight: 19 }}>
+                          {health.summary}
+                        </Text>
+                      </View>
+                    </Card>
+                  </View>
+                </ScrollView>
+
+                <PagerDots count={2} active={page} />
               </View>
 
               <View style={{ paddingHorizontal: 20 }}>

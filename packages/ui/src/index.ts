@@ -58,6 +58,11 @@ export const lightTheme = {
     carbs: '#1F6FD0',
     fat: '#B07B08',
   },
+  micro: {
+    fiber: '#6247D6',
+    sugar: '#C42D7B',
+    sodium: '#A86A05',
+  },
   text: {
     primary: '#0D1117',
     secondary: '#49555F',
@@ -109,6 +114,15 @@ export function macroGradientsFor(theme: Theme) {
   };
 }
 
+/** The same, for the fibre/sugar/sodium rings on the dashboard's second page. */
+export function microGradientsFor(theme: Theme) {
+  return {
+    fiber: { from: theme.micro.fiber, to: theme.micro.fiber },
+    sugar: { from: theme.micro.sugar, to: theme.micro.sugar },
+    sodium: { from: theme.micro.sodium, to: theme.micro.sodium },
+  };
+}
+
 export const radii = {
   sm: 10,
   md: 16,
@@ -137,3 +151,5 @@ export const motion = {
 } as const;
 
 export type MacroKey = 'protein' | 'carbs' | 'fat';
+
+export type MicroKey = 'fiber' | 'sugar' | 'sodium';
