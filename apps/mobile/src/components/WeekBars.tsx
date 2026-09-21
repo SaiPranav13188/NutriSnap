@@ -39,16 +39,21 @@ export function WeekBars({ week, weeksAgo, onWeeksAgo, color, target }: WeekBars
           return (
             <View key={day.date} style={{ flex: 1, alignItems: 'center', height: '100%' }}>
               <View style={{ flex: 1, justifyContent: 'flex-end', width: '100%' }}>
-                <Animated.View
-                  entering={FadeIn.delay(i * 45)}
-                  style={{
-                    height: day.value > 0 ? height : 3,
-                    borderRadius: 7,
-                    backgroundColor: day.value > 0 ? color : c.glass.border,
-                    opacity: day.elapsed ? 1 : 0.35,
-                  }}
-                  accessibilityLabel={`${day.weekday}: ${Math.round(day.value)}`}
-                />
+                {/* The entering animation drives opacity, so the dimming of a
+                    day still to come has to live on an inner view. Both on the
+                    same node and Reanimated warns that one will overwrite the
+                    other — and which one wins is a race. */}
+                <Animated.View entering={FadeIn.delay(i * 45)} style={{ width: '100%' }}>
+                  <View
+                    style={{
+                      height: day.value > 0 ? height : 3,
+                      borderRadius: 7,
+                      backgroundColor: day.value > 0 ? color : c.glass.border,
+                      opacity: day.elapsed ? 1 : 0.35,
+                    }}
+                    accessibilityLabel={`${day.weekday}: ${Math.round(day.value)}`}
+                  />
+                </Animated.View>
               </View>
             </View>
           );
