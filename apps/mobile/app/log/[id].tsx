@@ -67,9 +67,38 @@ export default function LogDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [log, setLog] = useState<FoodLog | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Meal photos live in a private bucket, so `photo_url` holds a storage path
+   * rather than something an <Image> can fetch. It has to be exchanged for a
+   * signed URL first — handing the raw path straight to the image source is
+   * what left this screen showing an empty grey square.
+   */
+  const resolvePhoto = useCallback(async (stored: string | null) => {
+    if (!stored) {
+      setPhotoUri(null);
+      return;
+    }
+
+    // Older logs, and anything captured before the bucket existed, may already
+    // hold a usable URL.
+    if (/^(https?:|file:|data:)/.test(stored)) {
+      setPhotoUri(stored);
+      return;
+    }
+
+    try {
+      const { url } = await api.getPhotoUrl(stored);
+      setPhotoUri(url);
+    } catch {
+      // The report stands on its own without the picture.
+      setPhotoUri(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -77,12 +106,13 @@ export default function LogDetail() {
     try {
       const { log: found } = await api.getLog(id);
       setLog(found);
+      void resolvePhoto(found.photo_url);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not load that meal.');
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, resolvePhoto]);
 
   // Reload on focus so an edit made elsewhere is reflected on the way back.
   useFocusEffect(
@@ -181,23 +211,32 @@ export default function LogDetail() {
                   {log.name}
                 </Text>
 
-                {log.photo_url ? (
+                {photoUri ? (
                   <Animated.View entering={FadeInDown.duration(320)}>
                     {log.ingredients.length > 0 ? (
                       <IngredientOverlay
-                        uri={log.photo_url}
+                        uri={photoUri}
                         ingredients={log.ingredients}
                         totalProteinG={log.protein_g}
                         size={photoSize}
                       />
                     ) : (
                       <Image
-                        source={{ uri: log.photo_url }}
+                        source={{ uri: photoUri }}
                         style={{ width: photoSize, height: photoSize, borderRadius: 24 }}
                         accessibilityLabel={`Photo of ${log.name}`}
+                        onError={() => setPhotoUri(null)}
                       />
                     )}
                   </Animated.View>
+                ) : log.photo_url ? (
+                  // Held a photo, but it could not be fetched. Say so rather
+                  // than leaving a blank rectangle the user has to interpret.
+                  <Card style={{ padding: 24, alignItems: 'center' }}>
+                    <Text style={{ color: c.text.tertiary, fontSize: 13 }}>
+                      Photo unavailable.
+                    </Text>
+                  </Card>
                 ) : null}
 
                 <Card style={{ padding: 22, alignItems: 'center', gap: 20 }}>
@@ -354,7 +393,7 @@ export default function LogDetail() {
                       <DetailRow label="Sugar" value={`${Math.round(log.sugar_g)}g`} />
                     )}
                     {log.fiber_g != null && (
-                      <DetailRow label="Fibre" value={`${Math.round(log.fiber_g)}g`} />
+                      <DetailRow label="Fiber" value={`${Math.round(log.fiber_g)}g`} />
                     )}
                     {log.sodium_mg != null && (
                       <DetailRow label="Sodium" value={`${Math.round(log.sodium_mg)}mg`} />
