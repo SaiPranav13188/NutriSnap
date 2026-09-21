@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { env } from '../env.js';
 import { requireAuth, HttpError } from '../auth.js';
+import { assertTableExists } from '../db-errors.js';
 
 /**
  * Progress photos.
@@ -50,6 +51,7 @@ export async function photoRoutes(app: FastifyInstance): Promise<void> {
       .order('taken_at', { ascending: false })
       .limit(limit);
 
+    assertTableExists(error, 'Progress photos');
     if (error) {
       throw new HttpError(500, `Could not load your photos: ${error.message}`, 'photos_read_failed');
     }
@@ -113,6 +115,7 @@ export async function photoRoutes(app: FastifyInstance): Promise<void> {
       // The row is the record of ownership; without it the object is an
       // orphan nothing can reach, so take it back out.
       await request.db.storage.from(env.MEAL_PHOTO_BUCKET).remove([path]);
+      assertTableExists(error, 'Progress photos');
       throw new HttpError(500, `Could not save that photo: ${error?.message}`, 'photo_write_failed');
     }
 
@@ -133,6 +136,7 @@ export async function photoRoutes(app: FastifyInstance): Promise<void> {
       .eq('user_id', request.user.id)
       .maybeSingle();
 
+    assertTableExists(error, 'Progress photos');
     if (error) {
       throw new HttpError(500, `Could not delete that photo: ${error.message}`, 'photos_read_failed');
     }

@@ -52,10 +52,24 @@ export default function Exercise() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [day, profile] = await Promise.all([api.getExercise(), api.getProfile()]);
-      setLogs(day.logs);
-      setTotals({ calories: day.total_calories, minutes: day.total_minutes });
-      setWeightKg(profile.profile.current_weight_kg ?? null);
+      // Settled rather than all: the body weight drives the burn estimate, and
+      // losing it because the workout list failed would quietly swap the user
+      // for a 70kg stranger in every calculation on this screen.
+      const [day, profile] = await Promise.allSettled([api.getExercise(), api.getProfile()]);
+
+      if (profile.status === 'fulfilled') {
+        setWeightKg(profile.value.profile.current_weight_kg ?? null);
+      }
+
+      if (day.status === 'fulfilled') {
+        setLogs(day.value.logs);
+        setTotals({ calories: day.value.total_calories, minutes: day.value.total_minutes });
+      } else {
+        const caught = day.reason;
+        setError(
+          caught instanceof ApiError ? caught.message : 'Could not load your workouts.',
+        );
+      }
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not load your workouts.');
     } finally {

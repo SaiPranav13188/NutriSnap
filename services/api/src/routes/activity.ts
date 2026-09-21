@@ -8,6 +8,7 @@ import {
   type Profile,
 } from '@nutrisnap/core';
 import { requireAuth, HttpError } from '../auth.js';
+import { assertTableExists } from '../db-errors.js';
 
 /**
  * Water and exercise logging.
@@ -71,6 +72,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
       .eq('logged_on', date)
       .order('logged_at', { ascending: false });
 
+    assertTableExists(error, 'Water tracking');
     if (error) {
       throw new HttpError(500, `Could not load your water: ${error.message}`, 'water_read_failed');
     }
@@ -90,6 +92,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
       .select('*')
       .single();
 
+    assertTableExists(error, 'Water tracking');
     if (error || !data) {
       throw new HttpError(500, `Could not save that: ${error?.message}`, 'water_write_failed');
     }
@@ -116,6 +119,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
       .limit(1)
       .maybeSingle();
 
+    assertTableExists(error, 'Water tracking');
     if (error) {
       throw new HttpError(500, `Could not undo that: ${error.message}`, 'water_read_failed');
     }
@@ -143,6 +147,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
       .eq('id', id)
       .eq('user_id', request.user.id);
 
+    assertTableExists(error, 'Water tracking');
     if (error) {
       throw new HttpError(500, `Could not delete that: ${error.message}`, 'water_delete_failed');
     }
@@ -164,6 +169,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
       .eq('logged_on', date)
       .order('logged_at', { ascending: false });
 
+    assertTableExists(error, 'Workout logging');
     if (error) {
       throw new HttpError(
         500,
@@ -216,6 +222,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
       .select('*')
       .single();
 
+    assertTableExists(error, 'Workout logging');
     if (error || !data) {
       throw new HttpError(
         500,
@@ -243,6 +250,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
       .select('*')
       .maybeSingle();
 
+    assertTableExists(error, 'Workout logging');
     if (error) {
       throw new HttpError(
         500,
@@ -264,6 +272,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
       .eq('id', id)
       .eq('user_id', request.user.id);
 
+    assertTableExists(error, 'Workout logging');
     if (error) {
       throw new HttpError(
         500,
