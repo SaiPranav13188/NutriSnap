@@ -10,7 +10,8 @@
     "ios": "expo start --ios",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "doctor": "npx expo-doctor"
+    "doctor": "npx expo-doctor",
+    "eas-build-post-install": "pnpm --filter @nutrisnap/core build"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
