@@ -52,9 +52,25 @@ $fn$;
 
 -- ---------------------------------------------------------------------------
 -- Recompute a user's logging streak from their food_logs history.
--- Called after a log is written. Idempotent.
+-- Called after a log is written, and on read so the flame goes out on its own
+-- once a day is missed. Idempotent.
+--
+-- `p_tz_offset` is minutes east of UTC, matching the `tz_offset` every
+-- day-scoped read already carries: India is +330, New York is -300. It has to
+-- be here because a streak is a question about consecutive days on the
+-- *user's* calendar, and bucketing on UTC answers it for nobody but the users
+-- sitting on UTC. In India a meal logged at 1am was filed under the previous
+-- UTC day, so today produced no distinct day at all and the run came back one
+-- short of what the person had actually done.
+--
+-- Zero keeps the old behaviour for a caller that does not say.
 -- ---------------------------------------------------------------------------
-create or replace function public.recompute_streak(p_user uuid)
+
+-- The single-argument version this replaces has to go, or PostgREST sees two
+-- candidates for the same name and cannot pick one.
+drop function if exists public.recompute_streak(uuid);
+
+create or replace function public.recompute_streak(p_user uuid, p_tz_offset int default 0)
 returns public.streaks
 language plpgsql
 security definer
@@ -67,14 +83,17 @@ declare
   v_prev     date;
   v_day      date;
   v_last     date;
-  v_today    date := current_date;
+  -- Today on the caller's calendar, not the server's. `current_date` would
+  -- also depend on whatever TimeZone the session happens to carry.
+  v_today    date := ((now() at time zone 'UTC') + (p_tz_offset * interval '1 minute'))::date;
 begin
   if p_user <> coalesce(auth.uid(), p_user) then
     raise exception 'not authorized';
   end if;
 
   for v_day in
-    select distinct (logged_at at time zone 'UTC')::date as d
+    select distinct
+      ((logged_at at time zone 'UTC') + (p_tz_offset * interval '1 minute'))::date as d
     from public.food_logs
     where user_id = p_user
     order by d
@@ -135,5 +154,5 @@ as $fn$
 $fn$;
 
 grant execute on function public.nutrition_totals_by_day(uuid, date, date) to authenticated;
-grant execute on function public.recompute_streak(uuid)                    to authenticated;
+grant execute on function public.recompute_streak(uuid, int)               to authenticated;
 grant execute on function public.weight_series(uuid, timestamptz)          to authenticated;

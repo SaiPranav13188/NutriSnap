@@ -16,7 +16,7 @@ import {
   describeDate,
   healthScore,
   microTargets,
-  waterTarget,
+  resolveWaterTarget,
   ringProgress,
   todayKey,
   type DailyTarget,
@@ -39,6 +39,11 @@ import { WaterCard } from '../../src/components/WaterCard';
 import { FavouritesStrip } from '../../src/components/FavouritesStrip';
 import { RolloverBox } from '../../src/components/RolloverBox';
 import { ThemeToggle } from '../../src/components/ThemeToggle';
+import { AppLogo } from '../../src/components/AppLogo';
+import { GoalCelebration } from '../../src/components/GoalCelebration';
+import { MealThumb } from '../../src/components/MealThumb';
+import { UncertaintyNote } from '../../src/components/UncertaintyNote';
+import { PendingLogsBanner } from '../../src/components/PendingLogsBanner';
 import { useColors } from '../../src/lib/theme';
 import { clearStoredAnswers, readStoredAnswers } from '../../src/lib/session';
 
@@ -76,8 +81,11 @@ function NutrientRing({
   const progress = ringProgress(eaten, target);
 
   return (
-    <View
-      style={{ flex: 1, alignItems: 'center', gap: 4 }}
+    // Each nutrient carries its own surface rather than sharing one with the
+    // other two. Three tiles read as three separate readings; one card split
+    // into three columns reads as a table the eye has to parse first.
+    <Card
+      style={{ flex: 1, alignItems: 'center', gap: 3, paddingVertical: 14, paddingHorizontal: 6 }}
       accessible
       accessibilityLabel={`${label}, ${Math.round(eaten)} of ${Math.round(target)} ${unit}`}
     >
@@ -91,7 +99,7 @@ function NutrientRing({
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.8}
-          style={{ color: c.text.primary, fontSize: 17, fontWeight: '700' }}
+          style={{ color: c.text.primary, fontSize: 15, fontWeight: '700' }}
         >
           {Math.round(eaten)}
         </Text>
@@ -99,32 +107,32 @@ function NutrientRing({
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.8}
-          style={{ color: c.text.tertiary, fontSize: 11, marginLeft: 2 }}
+          style={{ color: c.text.tertiary, fontSize: 10, marginLeft: 2 }}
         >
           /{Math.round(target)}
           {unit}
         </Text>
       </View>
 
-      <Text style={{ color, fontSize: 11, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color, fontSize: 10, fontWeight: '600' }}>{label}</Text>
 
       <ProgressRing
         ratio={progress.ratio}
-        size={72}
-        strokeWidth={6}
+        size={54}
+        strokeWidth={5}
         from={gradient.from}
         to={gradient.to}
         delay={delay}
         gradientId={gradientId}
       >
-        <Text style={{ fontSize: 26 }}>{icon}</Text>
+        <Text style={{ fontSize: 20 }}>{icon}</Text>
       </ProgressRing>
 
       <Text style={{ color: c.text.tertiary, fontSize: 10 }}>
         {Math.max(0, Math.round(progress.remaining))}
         {unit} left
       </Text>
-    </View>
+    </Card>
   );
 }
 
@@ -150,6 +158,8 @@ export default function Dashboard() {
   const [waterMl, setWaterMl] = useState(0);
   /** Drives the water goal, which scales with body weight. */
   const [profileWeightKg, setProfileWeightKg] = useState<number | null>(null);
+  /** An explicit goal set in Preferences, which overrides the derived one. */
+  const [waterGoalOverrideMl, setWaterGoalOverrideMl] = useState<number | null>(null);
   const [favourites, setFavourites] = useState<FoodLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -200,6 +210,7 @@ export default function Dashboard() {
         if (favs.status === 'fulfilled') setFavourites(favs.value.logs);
         if (profile.status === 'fulfilled') {
           setProfileWeightKg(profile.value.profile.current_weight_kg ?? null);
+          setWaterGoalOverrideMl(profile.value.profile.water_goal_ml ?? null);
         }
       } catch (caught) {
         setError(caught instanceof ApiError ? caught.message : 'Could not load your day.');
@@ -220,6 +231,10 @@ export default function Dashboard() {
   );
 
   const caloriesByDay = Object.fromEntries(week.map((d) => [d.day, d.calories]));
+  // The totals come back for every date in the window, zeroed where nothing
+  // was logged, so the strip needs the counts to tell an empty day from a day
+  // that genuinely ate nothing.
+  const logCountByDay = Object.fromEntries(week.map((d) => [d.day, d.log_count]));
 
   if (loading) {
     return (
@@ -240,7 +255,10 @@ export default function Dashboard() {
   // Fibre, sugar and sodium have no stored goals — they are derived from the
   // calorie target, so they stay correct after a plan change.
   const micro = microTargets(targets?.calories ?? 0);
-  const waterGoalMl = waterTarget(profileWeightKg);
+  const waterGoalMl = resolveWaterTarget(waterGoalOverrideMl, profileWeightKg);
+  // The arc closing is the moment the screen exists for, so that is what
+  // the celebration keys off rather than a threshold of its own.
+  const goalMet = effectiveTarget > 0 && calories.ratio >= 1;
   const health = healthScore(totals, targets);
   const scoreColor =
     health.score >= 8 ? c.state.success : health.score >= 5 ? c.state.warning : c.state.danger;
@@ -269,11 +287,25 @@ export default function Dashboard() {
               paddingHorizontal: 20,
             }}
           >
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: c.text.secondary, fontSize: 14 }}>{describeDate(date)}</Text>
-              <Text style={{ color: c.text.primary, fontSize: 26, fontWeight: '700' }}>
-                Your day
-              </Text>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <AppLogo size={38} />
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: c.text.primary,
+                    fontSize: 21,
+                    fontWeight: '700',
+                    letterSpacing: -0.3,
+                  }}
+                >
+                  NutriSnap
+                </Text>
+                {/* The day being shown is demoted rather than dropped: the
+                    strip below marks the selection with a dot, which does not
+                    say whether that day is today. */}
+                <Text style={{ color: c.text.tertiary, fontSize: 12 }}>{describeDate(date)}</Text>
+              </View>
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -300,6 +332,9 @@ export default function Dashboard() {
               <ErrorNote message={error} />
             </View>
           )}
+
+          {/* Anything logged without a signal, and whether it has gone up. */}
+          <PendingLogsBanner onSynced={() => void load(date)} />
 
           {!targets ? (
             <View style={{ paddingHorizontal: 20 }}>
@@ -335,6 +370,7 @@ export default function Dashboard() {
                 selected={date}
                 onSelect={setDate}
                 caloriesByDay={caloriesByDay}
+                logCountByDay={logCountByDay}
                 targetCalories={targets.calories}
               />
 
@@ -349,12 +385,12 @@ export default function Dashboard() {
                   }
                 >
                   {/* Page one: the day at a glance. */}
-                  <View style={{ width, paddingHorizontal: 20 }}>
-                    <Card style={{ padding: 20, alignItems: 'center', gap: 22 }}>
+                  <View style={{ width, paddingHorizontal: 20, gap: 14 }}>
+                    <Card style={{ padding: 20, alignItems: 'center', gap: 18 }}>
                       <ProgressRing
                         ratio={calories.ratio}
-                        size={230}
-                        strokeWidth={17}
+                        size={152}
+                        strokeWidth={12}
                         from={c.accent.lime}
                         to={c.accent.cyan}
                         gradientId="calorieRing"
@@ -364,148 +400,154 @@ export default function Dashboard() {
                             value={Math.abs(Math.round(calories.remaining))}
                             style={{
                               color: calories.over ? c.state.danger : c.text.primary,
-                              fontSize: 50,
+                              fontSize: 34,
                               fontWeight: '700',
                             }}
                           />
                           <Text
                             style={{
                               color: c.text.secondary,
-                              fontSize: 11,
+                              fontSize: 10,
                               letterSpacing: 2,
                               textTransform: 'uppercase',
-                              marginTop: 6,
+                              marginTop: 5,
                             }}
                           >
                             {calories.over ? 'over' : 'remaining'}
                           </Text>
-                          <Text style={{ color: c.text.tertiary, fontSize: 13, marginTop: 8 }}>
+                          <Text style={{ color: c.text.tertiary, fontSize: 11, marginTop: 5 }}>
                             {Math.round(totals.calories)} / {Math.round(effectiveTarget)} kcal
                           </Text>
                         </View>
                       </ProgressRing>
 
-                      <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch' }}>
-                        <NutrientRing
-                          label="Protein"
-                          icon={'\uD83C\uDF57'}
-                          eaten={totals.protein_g}
-                          target={targets.protein_g}
-                          color={c.macro.protein}
-                          gradient={macroGradients.protein}
-                          gradientId="macro-protein"
-                          delay={140}
-                        />
-                        <NutrientRing
-                          label="Carbs"
-                          icon={'\uD83C\uDF3E'}
-                          eaten={totals.carbs_g}
-                          target={targets.carbs_g}
-                          color={c.macro.carbs}
-                          gradient={macroGradients.carbs}
-                          gradientId="macro-carbs"
-                          delay={230}
-                        />
-                        <NutrientRing
-                          label="Fat"
-                          icon={'\uD83E\uDD51'}
-                          eaten={totals.fat_g}
-                          target={targets.fat_g}
-                          color={c.macro.fat}
-                          gradient={macroGradients.fat}
-                          gradientId="macro-fat"
-                          delay={320}
-                        />
-                      </View>
+                      {/* What that single figure is worth. Hides itself on a
+                          day whose band is narrower than its own rounding. */}
+                      <UncertaintyNote logs={logs} />
 
-                      <RolloverBox
-                        date={date}
-                        consumed={totals.calories}
-                        target={targets.calories}
-                        rollover={rollover}
-                        onChange={() => void load(date)}
-                        onError={setError}
-                      />
+                      {goalMet && <GoalCelebration isToday={date === todayKey()} />}
                     </Card>
+
+                    <RolloverBox
+                      date={date}
+                      consumed={totals.calories}
+                      target={targets.calories}
+                      rollover={rollover}
+                      onChange={() => void load(date)}
+                      onError={setError}
+                    />
+
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <NutrientRing
+                        label="Protein"
+                        icon={'\uD83C\uDF57'}
+                        eaten={totals.protein_g}
+                        target={targets.protein_g}
+                        color={c.macro.protein}
+                        gradient={macroGradients.protein}
+                        gradientId="macro-protein"
+                        delay={140}
+                      />
+                      <NutrientRing
+                        label="Carbs"
+                        icon={'\uD83C\uDF3E'}
+                        eaten={totals.carbs_g}
+                        target={targets.carbs_g}
+                        color={c.macro.carbs}
+                        gradient={macroGradients.carbs}
+                        gradientId="macro-carbs"
+                        delay={230}
+                      />
+                      <NutrientRing
+                        label="Fat"
+                        icon={'\uD83E\uDD51'}
+                        eaten={totals.fat_g}
+                        target={targets.fat_g}
+                        color={c.macro.fat}
+                        gradient={macroGradients.fat}
+                        gradientId="macro-fat"
+                        delay={320}
+                      />
+                    </View>
                   </View>
 
                   {/* Page two: what the headline numbers leave out. */}
-                  <View style={{ width, paddingHorizontal: 20 }}>
-                    <Card style={{ padding: 20, gap: 22 }}>
-                      <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch' }}>
-                        <NutrientRing
-                          label="Fiber"
-                          icon={'\uD83E\uDD66'}
-                          eaten={totals.fiber_g}
-                          target={micro.fiber_g}
-                          color={c.micro.fiber}
-                          gradient={microGradients.fiber}
-                          gradientId="micro-fiber"
-                          delay={140}
-                        />
-                        <NutrientRing
-                          label="Sugar"
-                          icon={'\uD83C\uDF6C'}
-                          eaten={totals.sugar_g}
-                          target={micro.sugar_g}
-                          color={c.micro.sugar}
-                          gradient={microGradients.sugar}
-                          gradientId="micro-sugar"
-                          delay={230}
-                        />
-                        <NutrientRing
-                          label="Sodium"
-                          icon={'\uD83E\uDDC2'}
-                          eaten={totals.sodium_mg}
-                          target={micro.sodium_mg}
-                          color={c.micro.sodium}
-                          gradient={microGradients.sodium}
-                          gradientId="micro-sodium"
-                          delay={320}
-                          unit="mg"
-                        />
-                      </View>
+                  <View style={{ width, paddingHorizontal: 20, gap: 14 }}>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <NutrientRing
+                        label="Fiber"
+                        icon={'\uD83E\uDD66'}
+                        eaten={totals.fiber_g}
+                        target={micro.fiber_g}
+                        color={c.micro.fiber}
+                        gradient={microGradients.fiber}
+                        gradientId="micro-fiber"
+                        delay={140}
+                      />
+                      <NutrientRing
+                        label="Sugar"
+                        icon={'\uD83C\uDF6C'}
+                        eaten={totals.sugar_g}
+                        target={micro.sugar_g}
+                        color={c.micro.sugar}
+                        gradient={microGradients.sugar}
+                        gradientId="micro-sugar"
+                        delay={230}
+                      />
+                      <NutrientRing
+                        label="Sodium"
+                        icon={'\uD83E\uDDC2'}
+                        eaten={totals.sodium_mg}
+                        target={micro.sodium_mg}
+                        color={c.micro.sodium}
+                        gradient={microGradients.sodium}
+                        gradientId="micro-sodium"
+                        delay={320}
+                        unit="mg"
+                      />
+                    </View>
 
-                      <View style={{ gap: 10 }}>
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'baseline',
-                            justifyContent: 'space-between',
-                          }}
-                        >
-                          <Text style={{ color: c.text.primary, fontSize: 17, fontWeight: '700' }}>
-                            Health score
-                          </Text>
-                          <Text style={{ color: scoreColor, fontSize: 17, fontWeight: '700' }}>
-                            {health.score}/10
-                          </Text>
-                        </View>
-
-                        <View
-                          style={{
-                            height: 8,
-                            borderRadius: 4,
-                            backgroundColor: c.glass.DEFAULT,
-                            overflow: 'hidden',
-                          }}
-                          accessibilityRole="progressbar"
-                          accessibilityValue={{ min: 0, max: 10, now: health.score }}
-                        >
-                          <View
-                            style={{
-                              width: `${health.score * 10}%`,
-                              height: '100%',
-                              borderRadius: 4,
-                              backgroundColor: scoreColor,
-                            }}
-                          />
-                        </View>
-
-                        <Text style={{ color: c.text.secondary, fontSize: 13, lineHeight: 19 }}>
-                          {health.summary}
+                    {/* The score is a verdict on the three rings above, so it gets a
+                        surface of its own rather than sharing theirs. */}
+                    <Card style={{ padding: 20, gap: 12 }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'baseline',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <Text style={{ color: c.text.primary, fontSize: 17, fontWeight: '700' }}>
+                          Health score
+                        </Text>
+                        <Text style={{ color: scoreColor, fontSize: 17, fontWeight: '700' }}>
+                          {health.score}/10
                         </Text>
                       </View>
+
+                      <View
+                        style={{
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: c.glass.DEFAULT,
+                          overflow: 'hidden',
+                        }}
+                        accessibilityRole="progressbar"
+                        accessibilityValue={{ min: 0, max: 10, now: health.score }}
+                      >
+                        <View
+                          style={{
+                            width: `${health.score * 10}%`,
+                            height: '100%',
+                            borderRadius: 4,
+                            backgroundColor: scoreColor,
+                          }}
+                        />
+                      </View>
+
+                      <Text style={{ color: c.text.secondary, fontSize: 13, lineHeight: 19 }}>
+                        {health.summary}
+                      </Text>
                     </Card>
                   </View>
 
@@ -522,42 +564,6 @@ export default function Dashboard() {
                 </ScrollView>
 
                 <PagerDots count={3} active={page} />
-              </View>
-
-              <View style={{ paddingHorizontal: 20, gap: 10 }}>
-                <Button onPress={() => router.push('/(tabs)/scan')}>Scan a meal</Button>
-
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {(
-                    [
-                      { label: 'Movement', icon: '\uD83C\uDFC3', href: '/exercise' },
-                      { label: 'Coach', icon: '\uD83D\uDCAC', href: '/coach' },
-                    ] as const
-                  ).map((action) => (
-                    <Pressable
-                      key={action.label}
-                      onPress={() => router.push(action.href)}
-                      accessibilityRole="button"
-                      style={{
-                        flex: 1,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8,
-                        paddingVertical: 14,
-                        borderRadius: 999,
-                        borderWidth: 1,
-                        borderColor: c.glass.border,
-                        backgroundColor: c.glass.DEFAULT,
-                      }}
-                    >
-                      <Text style={{ fontSize: 15 }}>{action.icon}</Text>
-                      <Text style={{ color: c.text.primary, fontSize: 14, fontWeight: '600' }}>
-                        {action.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
               </View>
             </>
           )}
@@ -614,6 +620,8 @@ export default function Dashboard() {
                     <Card
                       style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}
                     >
+                      <MealThumb path={log.photo_url} name={log.name} />
+
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{ color: c.text.primary, fontSize: 15, fontWeight: '500' }}

@@ -20,6 +20,16 @@ interface ProgressRingProps {
   delay?: number;
   gradientId: string;
   children?: React.ReactNode;
+  /**
+   * Draw the track as a broken circle and leave the arc off entirely.
+   *
+   * For a day with nothing logged. A solid track at zero progress looks like
+   * a day that scored nothing, which is a different claim from a day nobody
+   * told us about.
+   */
+  dashed?: boolean;
+  /** Overrides the track colour, for states that are about the ring itself. */
+  trackColor?: string;
 }
 
 /**
@@ -36,6 +46,8 @@ export function ProgressRing({
   delay = 0,
   gradientId,
   children,
+  dashed = false,
+  trackColor,
 }: ProgressRingProps) {
   const c = useColors();
   const radius = (size - strokeWidth) / 2;
@@ -70,21 +82,28 @@ export function ProgressRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={c.glass.border}
+          stroke={trackColor ?? c.glass.border}
           strokeWidth={strokeWidth}
+          // Scaled off the stroke so the gaps stay in proportion at any size:
+          // a fixed dash pattern reads as a dotted line on the 36px strip and
+          // as a solid one on the 152px dashboard ring.
+          strokeDasharray={dashed ? `${strokeWidth * 1.2} ${strokeWidth * 1.6}` : undefined}
+          strokeLinecap={dashed ? 'round' : 'butt'}
         />
 
-        <AnimatedCircle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={`url(#${gradientId})`}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          animatedProps={animatedProps}
-        />
+        {!dashed && (
+          <AnimatedCircle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={`url(#${gradientId})`}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            animatedProps={animatedProps}
+          />
+        )}
       </Svg>
 
       {children && (

@@ -38,6 +38,14 @@ export interface Profile {
   dietary_preference: DietaryPreference | null;
   allergies: string[];
   units: Units;
+  /**
+   * Steps per day the user is aiming for. Shown on Personal details and used
+   * to judge a tracked walk; deliberately not part of the calorie maths,
+   * which already counts movement through `activity_level`.
+   */
+  daily_step_goal: number;
+  /** Explicit water target in ml. Null means derive it from body weight. */
+  water_goal_ml: number | null;
   referral_source: string | null;
   tried_other_apps: boolean | null;
   onboarding_completed: boolean;

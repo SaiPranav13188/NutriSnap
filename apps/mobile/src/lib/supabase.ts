@@ -1,4 +1,7 @@
 import 'react-native-url-polyfill/auto';
+// Installs `crypto.subtle`, which PKCE needs and Hermes does not have.
+// Must come before `createClient`.
+import './webCrypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 

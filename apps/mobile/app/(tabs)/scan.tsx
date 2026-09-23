@@ -14,9 +14,11 @@ import {
   type Ingredient,
 } from '@nutrisnap/core';
 import { api, ApiError } from '../../src/lib/api';
+import { logMeal } from '../../src/lib/pendingLogs';
 import { AnimatedNumber, Button, Card, ErrorNote, Metric, Screen } from '../../src/components/ui';
 import { useColors } from '../../src/lib/theme';
 import { IngredientOverlay } from '../../src/components/IngredientOverlay';
+import { CameraSheet, type CapturedPhoto } from '../../src/components/CameraSheet';
 
 type Mode = 'photo' | 'text' | 'barcode' | 'label';
 
@@ -46,6 +48,7 @@ export default function Scan() {
   const [description, setDescription] = useState('');
   const [barcode, setBarcode] = useState('');
 
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,55 +81,60 @@ export default function Scan() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
-  async function pickImage(source: 'camera' | 'library') {
-    setError(null);
-
-    const permission =
-      source === 'camera'
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      setError(
-        source === 'camera'
-          ? 'NutriSnap needs camera access to photograph your meal.'
-          : 'NutriSnap needs photo access to read your library.',
-      );
-      return;
-    }
-
-    const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ['images'],
-      quality: 0.7,
-      base64: true,
-      allowsEditing: false,
-    };
-
-    const result =
-      source === 'camera'
-        ? await ImagePicker.launchCameraAsync(options)
-        : await ImagePicker.launchImageLibraryAsync(options);
-
-    if (result.canceled || !result.assets[0]?.base64) return;
-
-    const asset = result.assets[0];
-    const image = { base64: asset.base64!, mediaType: asset.mimeType ?? 'image/jpeg' };
+  /** Send a captured or picked image off to be read. */
+  async function analyseImage(photo: CapturedPhoto) {
+    const image = { base64: photo.base64, mediaType: photo.mediaType };
     setLastImage(image);
-    setPreview(asset.uri);
+    setPreview(photo.uri);
     setBusy(true);
+    setError(null);
 
     try {
       const response =
         mode === 'label'
           ? await api.analyzeLabel({ image: image.base64, media_type: image.mediaType })
           : await api.analyzePhoto({ image: image.base64, media_type: image.mediaType });
-      applyAnalysis(response, asset.uri);
+      applyAnalysis(response, photo.uri);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not analyse that photo.');
       setPreview(null);
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * The library still goes through the system picker, which is where the
+   * photos are. Only the camera moved in-app.
+   */
+  async function pickFromLibrary() {
+    setError(null);
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError(
+        permission.canAskAgain
+          ? 'NutriSnap needs photo access to read your library.'
+          : 'Photo access is off for NutriSnap. Turn it on in your phone’s settings to pick a meal from your library.',
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+      base64: true,
+      allowsEditing: false,
+    });
+
+    if (result.canceled || !result.assets[0]?.base64) return;
+
+    const asset = result.assets[0];
+    await analyseImage({
+      uri: asset.uri,
+      base64: asset.base64!,
+      mediaType: asset.mimeType ?? 'image/jpeg',
+    });
   }
 
   async function runText() {
@@ -141,13 +149,23 @@ export default function Scan() {
     }
   }
 
-  async function runBarcode() {
+  /**
+   * `code` is passed when the camera read one, because the state set
+   * alongside it has not landed yet and looking up `barcode` here would look
+   * up whatever was in the box before.
+   */
+  async function runBarcode(code?: string) {
+    const digits = (code ?? barcode).trim();
+    if (digits.length < 6) return;
+
     setBusy(true);
     setError(null);
     try {
-      applyAnalysis(await api.lookupBarcode(barcode), null);
+      applyAnalysis(await api.lookupBarcode(digits), null);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Could not look that product up.');
+      setError(
+        caught instanceof ApiError ? caught.message : 'Could not look that product up.',
+      );
     } finally {
       setBusy(false);
     }
@@ -189,7 +207,7 @@ export default function Scan() {
     const totals = scaleTotals(edited, multiplier);
 
     try {
-      await api.createLog({
+      await logMeal({
         name: analysis.name,
         photo_url: photoUrl,
         serving_multiplier: multiplier,
@@ -208,6 +226,9 @@ export default function Scan() {
 
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
+      // Either way the meal is kept, so the screen clears. Home carries the
+      // banner that says a queued one has not gone up yet — telling the user
+      // twice would make a handled case look like a problem.
       router.replace('/(tabs)');
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not save that meal.');
@@ -517,10 +538,16 @@ export default function Scan() {
                 )}
               </View>
 
-              <Button onPress={() => pickImage('camera')} loading={busy}>
+              <Button
+                onPress={() => {
+                  setError(null);
+                  setCameraOpen(true);
+                }}
+                loading={busy}
+              >
                 Take photo
               </Button>
-              <Button variant="glass" onPress={() => pickImage('library')} disabled={busy}>
+              <Button variant="glass" onPress={() => void pickFromLibrary()} disabled={busy}>
                 Choose from library
               </Button>
             </Card>
@@ -552,6 +579,59 @@ export default function Scan() {
 
           {mode === 'barcode' && (
             <Card style={{ padding: 20, gap: 14 }}>
+              <View
+                style={{
+                  aspectRatio: 1.6,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  borderColor: c.glass.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 24,
+                }}
+              >
+                <Text style={{ fontSize: 40 }}>🔎</Text>
+                <Text
+                  style={{
+                    color: c.text.primary,
+                    fontSize: 16,
+                    fontWeight: '600',
+                    marginTop: 14,
+                    textAlign: 'center',
+                  }}
+                >
+                  Point the camera at the barcode
+                </Text>
+                <Text
+                  style={{
+                    color: c.text.secondary,
+                    fontSize: 13,
+                    marginTop: 6,
+                    textAlign: 'center',
+                    lineHeight: 19,
+                  }}
+                >
+                  It reads as soon as the whole code is in frame. No need to tap anything.
+                </Text>
+              </View>
+
+              <Button
+                onPress={() => {
+                  setError(null);
+                  setCameraOpen(true);
+                }}
+                loading={busy}
+              >
+                Scan a barcode
+              </Button>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: c.glass.border }} />
+                <Text style={{ color: c.text.tertiary, fontSize: 12 }}>or type it</Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: c.glass.border }} />
+              </View>
+
               <Text style={{ color: c.text.primary, fontSize: 15, fontWeight: '600' }}>
                 Barcode number
               </Text>
@@ -568,7 +648,12 @@ export default function Scan() {
                 Type the digits printed under the barcode. Data comes from Open Food Facts, so
                 coverage depends on what the community has catalogued.
               </Text>
-              <Button onPress={runBarcode} loading={busy} disabled={barcode.length < 6}>
+              <Button
+                variant="glass"
+                onPress={() => void runBarcode()}
+                loading={busy}
+                disabled={barcode.length < 6}
+              >
                 Look it up
               </Button>
             </Card>
@@ -577,6 +662,35 @@ export default function Scan() {
           {error && <ErrorNote message={error} />}
         </ScrollView>
       </SafeAreaView>
+
+      <CameraSheet
+        visible={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        hint={
+          mode === 'barcode'
+            ? 'Hold the code inside the frame — it reads on its own.'
+            : mode === 'label'
+              ? 'Get the whole panel in frame and keep it flat.'
+              : 'Shoot from above, and include a fork or your hand so we can judge the portion.'
+        }
+        // Passing this is what puts the sheet in scanning mode, so it is only
+        // given when the barcode tab is the one open.
+        onBarcode={
+          mode === 'barcode'
+            ? (code) => {
+                setCameraOpen(false);
+                // Filled in behind the sheet so the number that was read is
+                // visible and editable if the lookup comes back empty.
+                setBarcode(code);
+                void runBarcode(code);
+              }
+            : undefined
+        }
+        onCapture={(photo) => {
+          setCameraOpen(false);
+          void analyseImage(photo);
+        }}
+      />
     </Screen>
   );
 }

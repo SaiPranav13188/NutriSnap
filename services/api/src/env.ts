@@ -41,6 +41,34 @@ const schema = z.object({
   // routes return a clear 503 until a key is present.
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_VISION_MODEL: z.string().default('gemini-3.6-flash'),
+  /**
+   * The model for the lighter food calls: meal suggestions, "describe what
+   * you ate", and reading leftovers off a plate.
+   *
+   * Separate from the vision model for two reasons. Free-tier quota is per
+   * model per day, and the flagship's allowance is twenty requests — shared
+   * with meal scanning, that is a handful of meals before the whole app
+   * stops. And none of these needs the flagship: a suggestion is text, and
+   * judging how much rice is left is a far simpler question than estimating
+   * a meal's nutrition from scratch.
+   */
+  GEMINI_LIGHT_MODEL: z.string().default('gemini-3.5-flash-lite'),
+  /**
+   * Reading a restaurant menu. Follows the light model unless set.
+   *
+   * It is an image call, so the vision model is the obvious home for it, and
+   * that is exactly the trap: one menu photograph would spend one of the
+   * twenty daily flagship requests that meal scanning depends on, and a menu
+   * gets photographed at the moment someone is least able to be told to come
+   * back tomorrow.
+   *
+   * The work itself does not need the flagship either. Once the card is
+   * transcribed, estimating a dish from its name and description is the same
+   * job "describe what you ate" does on the light model already — the OCR is
+   * the easy half. Set it explicitly to point menus at the vision model if
+   * the estimates come back weak.
+   */
+  GEMINI_MENU_MODEL: z.string().optional(),
   // The coach writes prose rather than reading images, so it can use the
   // same fast model; split so either can be pointed elsewhere alone.
   GEMINI_COACH_MODEL: z.string().default('gemini-3.6-flash'),

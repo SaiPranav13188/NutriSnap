@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import * as Haptics from 'expo-haptics';
 import type { FoodLog } from '@nutrisnap/core';
 import { api, ApiError } from '../lib/api';
+import { logMeal } from '../lib/pendingLogs';
 import { useColors } from '../lib/theme';
 
 /**
@@ -34,7 +35,7 @@ export function FavouritesStrip({ favourites, onLogged, onError }: FavouritesStr
       // Copied field by field rather than spread: the source row carries an
       // id, a user_id and timestamps that must not travel with it, and
       // logged_at has to default to now so it lands on today.
-      await api.createLog({
+      await logMeal({
         name: log.name,
         photo_url: log.photo_url,
         serving_multiplier: log.serving_multiplier,

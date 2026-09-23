@@ -3,16 +3,21 @@
     "name": "NutriSnap",
     "slug": "nutrisnap",
     "version": "0.1.0",
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "scheme": "nutrisnap",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "backgroundColor": "#07090C",
     "splash": {
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#07090C"
     },
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nutrisnap.app",
@@ -25,9 +30,16 @@
       "package": "com.nutrisnap.app",
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#07090C"
       },
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "ACTIVITY_RECOGNITION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -42,10 +54,26 @@
         {
           "photosPermission": "NutriSnap needs access to your photos so you can log meals you already photographed."
         }
-      ]
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "NutriSnap reads your step count while a walk or run is being tracked, to work out how far and how fast you went."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "NutriSnap reads your speed while a ride is running, so it can pick the right effort band for your calorie count."
+        }
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     }
   }
 }

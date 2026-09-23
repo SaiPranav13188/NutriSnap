@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { canPushRollover, describeRollover, quoteRollover } from '@nutrisnap/core';
 import { api, ApiError, type DayRollover } from '../lib/api';
+import { Card } from './ui';
 import { useColors } from '../lib/theme';
 
 /**
@@ -78,15 +79,10 @@ export function RolloverBox({
   const pushed = rollover.already_pushed;
 
   return (
-    <View
-      style={{
-        alignSelf: 'stretch',
-        padding: 14,
-        borderRadius: 18,
-        backgroundColor: c.glass.DEFAULT,
-        gap: 10,
-      }}
-    >
+    // A card of its own rather than a panel sunk into the calorie card. The
+    // inset read as a footnote to the ring, when it is the one control on the
+    // page that changes tomorrow's target.
+    <Card style={{ alignSelf: 'stretch', padding: 16, gap: 10 }}>
       {rollover.carried_in_kcal > 0 && (
         // Say where an unusual allowance came from, rather than letting the
         // ring silently read higher than the plan.
@@ -164,6 +160,6 @@ export function RolloverBox({
           </Pressable>
         )}
       </View>
-    </View>
+    </Card>
   );
 }

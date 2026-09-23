@@ -10,6 +10,7 @@ import Animated, {
   useDerivedValue,
   runOnJS,
 } from 'react-native-reanimated';
+import { router } from 'expo-router';
 import { useColors } from '../lib/theme';
 
 /**
@@ -206,6 +207,53 @@ export function Metric({
         }}
       >
         {label}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Back button and title, for the screens pushed on top of a tab.
+ *
+ * Three screens had grown their own copy of this row before it was worth
+ * extracting; the fourth is where two of them had already drifted on the
+ * circle's size.
+ */
+export function ScreenHeader({ title }: { title: string }) {
+  const c = useColors();
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+        paddingHorizontal: 20,
+        paddingTop: 8,
+        paddingBottom: 4,
+      }}
+    >
+      <Pressable
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        hitSlop={10}
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: c.glass.DEFAULT,
+          borderWidth: 1,
+          borderColor: c.glass.border,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Text style={{ color: c.text.primary, fontSize: 20, lineHeight: 22 }}>‹</Text>
+      </Pressable>
+
+      <Text style={{ flex: 1, color: c.text.primary, fontSize: 21, fontWeight: '700' }}>
+        {title}
       </Text>
     </View>
   );

@@ -9,6 +9,7 @@ import {
 } from '@nutrisnap/core';
 import { requireAuth, HttpError } from '../auth.js';
 import { assertTableExists } from '../db-errors.js';
+import { dayQuery, dayWindow } from '../lib/day.js';
 
 /**
  * Water and exercise logging.
@@ -18,12 +19,7 @@ import { assertTableExists } from '../db-errors.js';
  * water and a workout can happen any number of times.
  */
 
-const dayQuery = z.object({
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-});
+
 
 const waterBody = z.object({
   amount_ml: z.number().int().min(1).max(10_000),
@@ -52,8 +48,6 @@ const exerciseBody = z.object({
   logged_at: z.string().datetime().optional(),
 });
 
-const todayKey = (): string => new Date().toISOString().slice(0, 10);
-
 export async function activityRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', requireAuth);
 
@@ -63,13 +57,15 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
 
   /** Every sip logged on a day, plus the total. */
   app.get('/api/water', async (request) => {
-    const { date = todayKey() } = dayQuery.parse(request.query);
+    const query = dayQuery.parse(request.query);
+    const { date, from, to } = dayWindow(query.date, query.tz_offset);
 
     const { data, error } = await request.db
       .from('water_logs')
       .select('*')
       .eq('user_id', request.user.id)
-      .eq('logged_on', date)
+      .gte('logged_at', from)
+      .lt('logged_at', to)
       .order('logged_at', { ascending: false });
 
     assertTableExists(error, 'Water tracking');
@@ -108,13 +104,15 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
    * better fit than a list with a delete on each row.
    */
   app.delete('/api/water/last', async (request, reply) => {
-    const { date = todayKey() } = dayQuery.parse(request.query);
+    const query = dayQuery.parse(request.query);
+    const { from, to } = dayWindow(query.date, query.tz_offset);
 
     const { data, error } = await request.db
       .from('water_logs')
       .select('id')
       .eq('user_id', request.user.id)
-      .eq('logged_on', date)
+      .gte('logged_at', from)
+      .lt('logged_at', to)
       .order('logged_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -160,13 +158,15 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
   // -------------------------------------------------------------------------
 
   app.get('/api/exercise', async (request) => {
-    const { date = todayKey() } = dayQuery.parse(request.query);
+    const query = dayQuery.parse(request.query);
+    const { date, from, to } = dayWindow(query.date, query.tz_offset);
 
     const { data, error } = await request.db
       .from('exercise_logs')
       .select('*')
       .eq('user_id', request.user.id)
-      .eq('logged_on', date)
+      .gte('logged_at', from)
+      .lt('logged_at', to)
       .order('logged_at', { ascending: false });
 
     assertTableExists(error, 'Workout logging');

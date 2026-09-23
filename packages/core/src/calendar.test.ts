@@ -3,6 +3,7 @@ import {
   ageInYears,
   birthYearRange,
   buildDateKey,
+  dayWindow,
   buildDateStrip,
   daysInMonth,
   defaultBirthDateKey,
@@ -251,5 +252,69 @@ describe('ageInYears', () => {
 
   it('is negative for a date in the future', () => {
     expect(ageInYears(new Date(2030, 0, 1), new Date(2026, 8, 20))).toBeLessThan(0);
+  });
+});
+
+describe('dayWindow', () => {
+  const IST = 330;
+  const NEW_YORK = -300;
+
+  /** The walk that went missing: 00:21 on 22 September, Indian time. */
+  const WALK = Date.parse('2026-09-21T18:51:06.080Z');
+
+  const covers = (window: { from: string; to: string }, instant: number): boolean =>
+    instant >= Date.parse(window.from) && instant < Date.parse(window.to);
+
+  it('runs local midnight to local midnight', () => {
+    const window = dayWindow('2026-09-22', IST);
+    expect(window.from).toBe('2026-09-21T18:30:00.000Z');
+    expect(window.to).toBe('2026-09-22T18:30:00.000Z');
+  });
+
+  it('puts a small-hours workout on the day it was done', () => {
+    expect(covers(dayWindow('2026-09-22', IST), WALK)).toBe(true);
+    expect(covers(dayWindow('2026-09-21', IST), WALK)).toBe(false);
+  });
+
+  it('is what UTC bucketing got wrong', () => {
+    // The same instant, bucketed in UTC, lands on the day before.
+    expect(covers(dayWindow('2026-09-21', 0), WALK)).toBe(true);
+    expect(covers(dayWindow('2026-09-22', 0), WALK)).toBe(false);
+  });
+
+  it('works west of UTC as well as east', () => {
+    const window = dayWindow('2026-09-22', NEW_YORK);
+    expect(window.from).toBe('2026-09-22T05:00:00.000Z');
+    expect(window.to).toBe('2026-09-23T05:00:00.000Z');
+  });
+
+  it('covers the whole day and no more', () => {
+    for (const offset of [0, IST, NEW_YORK, 840, -840]) {
+      const window = dayWindow('2026-03-01', offset);
+      expect(Date.parse(window.to) - Date.parse(window.from)).toBe(86_400_000);
+    }
+  });
+
+  it('leaves no gap or overlap between consecutive days', () => {
+    expect(dayWindow('2026-09-21', IST).to).toBe(dayWindow('2026-09-22', IST).from);
+  });
+
+  it('defaults to UTC, which is the behaviour it replaced', () => {
+    const window = dayWindow('2026-09-22');
+    expect(window.from).toBe('2026-09-22T00:00:00.000Z');
+  });
+
+  it('works out an unnamed today in the callers own zone', () => {
+    // 23:00 UTC is already tomorrow in India and still today in New York.
+    const at = Date.parse('2026-09-21T23:00:00.000Z');
+    const original = Date.now;
+    Date.now = () => at;
+    try {
+      expect(dayWindow(undefined, IST).date).toBe('2026-09-22');
+      expect(dayWindow(undefined, 0).date).toBe('2026-09-21');
+      expect(dayWindow(undefined, NEW_YORK).date).toBe('2026-09-21');
+    } finally {
+      Date.now = original;
+    }
   });
 });

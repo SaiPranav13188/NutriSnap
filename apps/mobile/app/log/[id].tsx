@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,11 +13,22 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { formatNumber, type FoodLog, type LogSource } from '@nutrisnap/core';
+import {
+  describeEaten,
+  describeOutcome,
+  describeSatiety,
+  formatNumber,
+  logSigma,
+  personalSatiety,
+  satietyOutcomesFromLogs,
+  type FoodLog,
+  type LogSource,
+} from '@nutrisnap/core';
 import { api, ApiError } from '../../src/lib/api';
 import { Card, ErrorNote, Metric, Screen } from '../../src/components/ui';
 import { MealEditSheet } from '../../src/components/MealEditSheet';
 import { IngredientOverlay } from '../../src/components/IngredientOverlay';
+import { CameraSheet } from '../../src/components/CameraSheet';
 import { useColors } from '../../src/lib/theme';
 
 /**
@@ -75,6 +86,17 @@ export default function LogDetail() {
   const [favouriting, setFavouriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** Plate-diff: photographing what was left, and what came of it. */
+  const [scanningPlate, setScanningPlate] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
+  const [correction, setCorrection] = useState<string | null>(null);
+
+  /**
+   * Recent meals, for two jobs: calibrating the satiety model to this person,
+   * and finding what they ate next so the prediction can be graded.
+   */
+  const [recent, setRecent] = useState<FoodLog[]>([]);
+
   /**
    * Meal photos live in a private bucket, so `photo_url` holds a storage path
    * rather than something an <Image> can fetch. It has to be exchanged for a
@@ -110,6 +132,13 @@ export default function LogDetail() {
       const { log: found } = await api.getLog(id);
       setLog(found);
       void resolvePhoto(found.photo_url);
+
+      // Fetched alongside rather than blocking on: the report stands without
+      // the satiety line, and a failure here should not empty the screen.
+      void api
+        .getRecent(60)
+        .then(({ logs }) => setRecent(logs))
+        .catch(() => setRecent([]));
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not load that meal.');
     } finally {
@@ -123,6 +152,89 @@ export default function LogDetail() {
       void load();
     }, [load]),
   );
+
+  /**
+   * Correct this meal by what was left on the plate.
+   *
+   * The photo goes straight to the server, which measures it against this
+   * meal's own ingredient list and scales the log down. Nothing is
+   * re-estimated here, so a blurry second picture cannot overwrite a good
+   * first one.
+   */
+  const applyLeftoverPhoto = useCallback(
+    async (base64: string, mediaType: string) => {
+      if (!id) return;
+      setScanningPlate(false);
+      setCorrecting(true);
+      setError(null);
+      setCorrection(null);
+
+      try {
+        const result = await api.correctLeftovers(id, base64, mediaType);
+        setLog(result.log);
+
+        if (result.changed) {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setCorrection(
+            `${describeEaten(result.eaten_fraction)} — this meal is now ${formatNumber(
+              Math.round(result.log.calories),
+            )} kcal.`,
+          );
+        } else {
+          setCorrection('That plate looks finished, so the meal is unchanged.');
+        }
+      } catch (caught) {
+        setError(
+          caught instanceof ApiError ? caught.message : 'Could not read that plate.',
+        );
+      } finally {
+        setCorrecting(false);
+      }
+    },
+    [id],
+  );
+
+  /**
+   * How long this meal should hold, and how long it did.
+   *
+   * The prediction is bent towards this person by their own history, and the
+   * grade comes from the gap to whatever they logged next — both of which are
+   * already on disk, so neither needs a column of its own.
+   */
+  const satiety = useMemo(() => {
+    if (!log) return null;
+
+    const outcomes = satietyOutcomesFromLogs(recent);
+    const prediction = personalSatiety(
+      {
+        calories: log.calories,
+        protein_g: log.protein_g,
+        fat_g: log.fat_g,
+        fiber_g: log.fiber_g ?? 0,
+        sugar_g: log.sugar_g ?? 0,
+      },
+      outcomes,
+    );
+
+    if (prediction.hours <= 0) return null;
+
+    // The next meal after this one, if there was one close enough to count.
+    const loggedAt = Date.parse(log.logged_at);
+    const next = recent
+      .filter((entry) => Date.parse(entry.logged_at) > loggedAt)
+      .sort((a, b) => Date.parse(a.logged_at) - Date.parse(b.logged_at))[0];
+
+    const actualHours = next ? (Date.parse(next.logged_at) - loggedAt) / 3_600_000 : null;
+
+    return {
+      line: describeSatiety(prediction),
+      calibrated: prediction.calibrated,
+      outcome:
+        actualHours !== null && actualHours > 0 && actualHours <= 8
+          ? describeOutcome({ predictedHours: prediction.hours, actualHours })
+          : null,
+    };
+  }, [log, recent]);
 
   const saveEdits = useCallback(
     async (patch: Record<string, unknown>) => {
@@ -452,6 +564,14 @@ export default function LogDetail() {
                       value={`${Math.round(log.ai_confidence * 100)}%`}
                     />
                   )}
+
+                  {/* What that confidence and this way of logging are worth in
+                      calories — the same figure this meal contributes to the
+                      band under the ring on the home screen. */}
+                  <DetailRow
+                    label="Estimate margin"
+                    value={`± ${formatNumber(Math.round(logSigma(log)))} kcal`}
+                  />
                 </Card>
 
                 {(log.sugar_g != null || log.fiber_g != null || log.sodium_mg != null) && (
@@ -479,6 +599,67 @@ export default function LogDetail() {
                   </Card>
                 )}
 
+                {satiety && (
+                  <Card style={{ padding: 16, gap: 6, marginTop: 4 }}>
+                    <Text style={{ color: c.text.primary, fontSize: 14, lineHeight: 20 }}>
+                      {satiety.line}
+                    </Text>
+
+                    {satiety.outcome && (
+                      <Text style={{ color: c.accent.cyan, fontSize: 13, lineHeight: 18 }}>
+                        {satiety.outcome}
+                      </Text>
+                    )}
+
+                    <Text style={{ color: c.text.tertiary, fontSize: 11, lineHeight: 16 }}>
+                      {satiety.calibrated
+                        ? 'Tuned to how your own meals have actually gone.'
+                        : 'A rule of thumb for now — it learns from your meals as you log them.'}
+                    </Text>
+                  </Card>
+                )}
+
+                {correction && (
+                  <View
+                    style={{
+                      marginTop: 4,
+                      padding: 14,
+                      borderRadius: 16,
+                      backgroundColor: `${c.state.success}1A`,
+                    }}
+                  >
+                    <Text style={{ color: c.state.success, fontSize: 13, lineHeight: 19 }}>
+                      {correction}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Plate-diff. The photo that was logged shows what was
+                    served; this one shows what was actually eaten. */}
+                <Pressable
+                  onPress={() => {
+                    setCorrection(null);
+                    setScanningPlate(true);
+                  }}
+                  disabled={correcting}
+                  accessibilityRole="button"
+                  accessibilityLabel="Photograph what is left on the plate"
+                  accessibilityHint="Corrects this meal by what you did not finish"
+                  style={{
+                    marginTop: 4,
+                    paddingVertical: 15,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: c.glass.borderStrong,
+                    alignItems: 'center',
+                    opacity: correcting ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ color: c.text.primary, fontSize: 15, fontWeight: '600' }}>
+                    {correcting ? 'Reading the plate…' : "Didn't finish it? Photograph the plate"}
+                  </Text>
+                </Pressable>
+
                 <Pressable
                   onPress={confirmDelete}
                   disabled={deleting}
@@ -501,6 +682,15 @@ export default function LogDetail() {
               </>
             )}
           </ScrollView>
+        )}
+
+        {scanningPlate && (
+          <CameraSheet
+            visible
+            hint="Photograph the plate as it is now — whatever is left of the meal."
+            onClose={() => setScanningPlate(false)}
+            onCapture={(photo) => void applyLeftoverPhoto(photo.base64, photo.mediaType)}
+          />
         )}
 
         {log && (

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, HttpError } from '../auth.js';
+import { tzOffsetOf } from '../lib/day.js';
 import { getOrCreateTargets, recomputeAndStoreTargets } from '../services/targets.js';
 import {
   bucketSeries,
@@ -40,6 +41,15 @@ export async function progressRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.user.id;
     const start = rangeStartDate(range as ProgressRange);
     const startIso = start?.toISOString() ?? null;
+
+    // Bring the streak up to date before reading it. The stored row is only
+    // written when a log is written, so a streak broken by not logging would
+    // otherwise keep showing the number it had when the logging stopped.
+    await request.db
+      .rpc('recompute_streak', { p_user: userId, p_tz_offset: tzOffsetOf(request.query) })
+      .then(({ error }) => {
+        if (error) request.log.warn({ err: error }, 'streak recompute failed');
+      });
 
     const [profileResult, weightResult, streakResult] = await Promise.all([
       request.db.from('profiles').select('*').eq('id', userId).single(),

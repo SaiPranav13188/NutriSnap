@@ -2,6 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, HttpError } from '../auth.js';
 import { getOrCreateTargets } from '../services/targets.js';
+import { dayQuery, dayWindow, tzOffsetOf } from '../lib/day.js';
+import { applyLeftovers, isCorrectionMeaningful } from '@nutrisnap/core';
+import { readLeftovers } from '../ai/leftovers.js';
 import { inferMealType, sumTotals, type FoodLog } from '@nutrisnap/core';
 
 const ingredientSchema = z.object({
@@ -31,13 +34,16 @@ const logBody = z.object({
   logged_at: z.string().datetime().optional(),
 });
 
-const DAY = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
 
-function dayBounds(date: string): { from: string; to: string } {
-  return {
-    from: new Date(`${date}T00:00:00.000Z`).toISOString(),
-    to: new Date(`${date}T23:59:59.999Z`).toISOString(),
-  };
+
+/** Accepts a bare base64 payload or a full data URI, as the food route does. */
+function normaliseLeftoverImage(
+  input: string,
+  fallbackMediaType = 'image/jpeg',
+): { base64: string; mediaType: string } {
+  const match = /^data:([^;]+);base64,(.*)$/s.exec(input);
+  if (match) return { mediaType: match[1] ?? fallbackMediaType, base64: match[2] ?? '' };
+  return { base64: input, mediaType: fallbackMediaType };
 }
 
 export async function logRoutes(app: FastifyInstance): Promise<void> {
@@ -45,15 +51,15 @@ export async function logRoutes(app: FastifyInstance): Promise<void> {
 
   /** A day's logs plus its totals and the targets they are measured against. */
   app.get('/api/logs', async (request) => {
-    const { date = new Date().toISOString().slice(0, 10) } = DAY.parse(request.query);
-    const { from, to } = dayBounds(date);
+    const query = dayQuery.parse(request.query);
+    const { date, from, to } = dayWindow(query.date, query.tz_offset);
 
     const { data, error } = await request.db
       .from('food_logs')
       .select('*')
       .eq('user_id', request.user.id)
       .gte('logged_at', from)
-      .lte('logged_at', to)
+      .lt('logged_at', to)
       .order('logged_at', { ascending: false });
 
     if (error) throw new HttpError(500, `Could not load your logs: ${error.message}`, 'logs_read_failed');
@@ -115,6 +121,7 @@ export async function logRoutes(app: FastifyInstance): Promise<void> {
     // Keep the flame honest. A failure here should not fail the log itself.
     const { error: streakError } = await request.db.rpc('recompute_streak', {
       p_user: request.user.id,
+      p_tz_offset: tzOffsetOf(request.query),
     });
     if (streakError) request.log.warn({ err: streakError }, 'streak recompute failed');
 
@@ -143,6 +150,93 @@ export async function logRoutes(app: FastifyInstance): Promise<void> {
     if (!data) throw new HttpError(404, 'Meal not found.', 'log_not_found');
 
     return { log: data as FoodLog };
+  });
+
+  /**
+   * Plate-diff: correct a logged meal by a photograph of what was left.
+   *
+   * The original analysis is not revisited. The model only reports how much
+   * of each ingredient is still on the plate, and the meal is scaled down by
+   * that — so a good first estimate cannot be overwritten by a bad second
+   * photograph.
+   */
+  app.post('/api/logs/:id/leftovers', async (request) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z
+      .object({ image: z.string().min(1), media_type: z.string().optional() })
+      .parse(request.body);
+
+    const { data: existing, error: readError } = await request.db
+      .from('food_logs')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', request.user.id)
+      .maybeSingle();
+
+    if (readError) {
+      throw new HttpError(500, `Could not load that meal: ${readError.message}`, 'logs_read_failed');
+    }
+    if (!existing) throw new HttpError(404, 'That meal does not exist.', 'log_not_found');
+
+    const log = existing as FoodLog;
+    const { base64, mediaType } = normaliseLeftoverImage(body.image, body.media_type);
+
+    const report = await readLeftovers({
+      base64,
+      mediaType,
+      served: log.ingredients ?? [],
+      mealName: log.name,
+    });
+
+    const diff = applyLeftovers({
+      ingredients: log.ingredients ?? [],
+      totals: {
+        calories: Number(log.calories ?? 0),
+        protein_g: Number(log.protein_g ?? 0),
+        carbs_g: Number(log.carbs_g ?? 0),
+        fat_g: Number(log.fat_g ?? 0),
+        sugar_g: Number(log.sugar_g ?? 0),
+        fiber_g: Number(log.fiber_g ?? 0),
+        sodium_mg: Number(log.sodium_mg ?? 0),
+      },
+      leftovers: report.empty_plate ? [] : report.leftovers,
+      overallRemaining: report.empty_plate
+        ? 0
+        : (report.leftovers[0]?.remaining ?? 0),
+    });
+
+    // Two photographs of the same plate differ by a few percent on lighting
+    // alone. Rewriting the log for that would be noise dressed as precision.
+    if (!isCorrectionMeaningful(diff.eatenFraction)) {
+      return { log, changed: false, eaten_fraction: diff.eatenFraction, note: report.note };
+    }
+
+    const { data: updated, error } = await request.db
+      .from('food_logs')
+      .update({
+        calories: Math.round(diff.totals.calories),
+        protein_g: Math.round(diff.totals.protein_g),
+        carbs_g: Math.round(diff.totals.carbs_g),
+        fat_g: Math.round(diff.totals.fat_g),
+        sugar_g: Math.round(diff.totals.sugar_g),
+        fiber_g: Math.round(diff.totals.fiber_g),
+        sodium_mg: Math.round(diff.totals.sodium_mg),
+        ingredients: diff.ingredients.map((item) => ({
+          name: item.name,
+          grams: Math.round(item.grams),
+          calories: Math.round(item.calories),
+        })),
+      })
+      .eq('id', id)
+      .eq('user_id', request.user.id)
+      .select('*')
+      .single();
+
+    if (error || !updated) {
+      throw new HttpError(500, `Could not correct that meal: ${error?.message}`, 'logs_write_failed');
+    }
+
+    return { log: updated, changed: true, eaten_fraction: diff.eatenFraction, note: report.note };
   });
 
   app.patch('/api/logs/:id', async (request) => {
@@ -178,7 +272,10 @@ export async function logRoutes(app: FastifyInstance): Promise<void> {
 
     if (error) throw new HttpError(500, `Could not delete that meal: ${error.message}`, 'log_delete_failed');
 
-    await request.db.rpc('recompute_streak', { p_user: request.user.id });
+    await request.db.rpc('recompute_streak', {
+      p_user: request.user.id,
+      p_tz_offset: tzOffsetOf(request.query),
+    });
     return reply.code(204).send();
   });
 
@@ -234,8 +331,24 @@ export async function logRoutes(app: FastifyInstance): Promise<void> {
     return { days: data ?? [], targets };
   });
 
-  /** Streak card on the Progress tab. */
+  /**
+   * Streak card on the Progress tab.
+   *
+   * This recomputes before reading, because the stored row is only written
+   * when a log is written. A streak broken by *not* logging has no write to
+   * trigger it, so the flame stayed lit on the old number indefinitely —
+   * someone who last logged a week ago still saw the streak they had when
+   * they stopped. The recompute is idempotent, and needs the caller's offset
+   * to know where their days end.
+   */
   app.get('/api/streak', async (request) => {
+    const { error: recomputeError } = await request.db.rpc('recompute_streak', {
+      p_user: request.user.id,
+      p_tz_offset: tzOffsetOf(request.query),
+    });
+    // A stale number still beats no number, so this only gets logged.
+    if (recomputeError) request.log.warn({ err: recomputeError }, 'streak recompute failed');
+
     const { data, error } = await request.db
       .from('streaks')
       .select('*')

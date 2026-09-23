@@ -2,7 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { answersToProfilePatch, isOnboardingComplete, type Profile } from '@nutrisnap/core';
 import { requireAuth, HttpError } from '../auth.js';
+import { env } from '../env.js';
+import { supabaseAdmin } from '../supabase.js';
 import { getOrCreateTargets, recomputeAndStoreTargets } from '../services/targets.js';
+import { runAdaptiveRecompute } from '../services/adaptive.js';
 
 const onboardingBody = z.object({
   gender: z.enum(['male', 'female', 'other']),
@@ -27,6 +30,13 @@ const onboardingBody = z.object({
 
 const profilePatchBody = onboardingBody.partial().extend({
   onboarding_completed: z.boolean().optional(),
+  /**
+   * Bounds match the column's check constraint, so a bad value is refused
+   * here with a readable message rather than by Postgres with a raw one.
+   */
+  daily_step_goal: z.number().int().min(1000).max(50000).optional(),
+  /** Null clears the override and goes back to deriving it from weight. */
+  water_goal_ml: z.number().int().min(500).max(6000).nullable().optional(),
 });
 
 export async function profileRoutes(app: FastifyInstance): Promise<void> {
@@ -140,6 +150,134 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/targets/calculate', async (request) => {
     const targets = await recomputeAndStoreTargets(request.db, request.user.id);
     return { targets };
+  });
+
+  /**
+   * What the user's own data says their target should be.
+   *
+   * Read-only: it runs the engine and reports the verdict without moving
+   * anything. The screen shows this before offering the button, because a
+   * calorie target that changes on its own while someone is looking at it is
+   * not a target, it is a surprise.
+   */
+  app.get('/api/targets/adaptive', async (request) => {
+    const outcome = await runAdaptiveRecompute(request.db, request.user.id, { apply: false });
+    return { adaptive: outcome };
+  });
+
+  /** Accept the adjustment above and write it. */
+  app.post('/api/targets/adaptive', async (request) => {
+    const outcome = await runAdaptiveRecompute(request.db, request.user.id, { apply: true });
+    const targets = await getOrCreateTargets(request.db, request.user.id);
+    return { adaptive: outcome, targets };
+  });
+
+  /** Every time the target has moved, and why. */
+  app.get('/api/targets/adjustments', async (request) => {
+    const { data, error } = await request.db
+      .from('target_adjustments')
+      .select('*')
+      .eq('user_id', request.user.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      throw new HttpError(
+        500,
+        `Could not load your target history: ${error.message}`,
+        'adjustments_read_failed',
+      );
+    }
+
+    return { adjustments: data ?? [] };
+  });
+
+  /**
+   * Delete the account and everything behind it.
+   *
+   * Every app store that lets an app create an account requires one of these,
+   * and more to the point, an app that will export your data but not destroy
+   * it is only half honest about whose data it is.
+   *
+   * Order matters. The stored objects go first, because they are the only
+   * part not covered by a foreign key: deleting the auth user cascades
+   * through `profiles` and takes every row with it, and once that has
+   * happened there is nothing left that knows which files were this user's.
+   * A failure here therefore leaves the account intact and says so, rather
+   * than half-deleting someone.
+   */
+  app.delete('/api/profile', async (request) => {
+    const userId = request.user.id;
+
+    const { confirm } = z
+      .object({
+        /**
+         * The client sends the account's own email back. It is the one thing
+         * a mis-routed or replayed request cannot know, and it makes an
+         * accidental tap impossible to complete.
+         */
+        confirm: z.string().min(1),
+      })
+      .parse(request.body ?? {});
+
+    if (confirm.trim().toLowerCase() !== (request.user.email ?? '').toLowerCase()) {
+      throw new HttpError(
+        400,
+        'Type your email address exactly to confirm deletion.',
+        'confirmation_mismatch',
+      );
+    }
+
+    /**
+     * Meals and progress shots share the one bucket, each under a folder
+     * named for the user. Paged rather than listed once: `list` caps at a
+     * thousand, and somebody who has photographed three meals a day for a
+     * year is past that.
+     */
+    for (;;) {
+      const { data: files, error: listError } = await supabaseAdmin.storage
+        .from(env.MEAL_PHOTO_BUCKET)
+        .list(userId, { limit: 1000 });
+
+      if (listError) {
+        throw new HttpError(
+          500,
+          `Could not read your photos, so nothing was deleted: ${listError.message}`,
+          'delete_photos_failed',
+        );
+      }
+
+      if (!files || files.length === 0) break;
+
+      const { error } = await supabaseAdmin.storage
+        .from(env.MEAL_PHOTO_BUCKET)
+        .remove(files.map((file) => `${userId}/${file.name}`));
+
+      if (error) {
+        throw new HttpError(
+          500,
+          `Could not delete your photos, so nothing was deleted: ${error.message}`,
+          'delete_photos_failed',
+        );
+      }
+
+      // A short final page means that was the last of them.
+      if (files.length < 1000) break;
+    }
+
+    // `profiles.id` references auth.users on delete cascade, and every other
+    // table references profiles the same way, so this one call empties them.
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+    if (error) {
+      throw new HttpError(
+        500,
+        `Could not delete your account: ${error.message}`,
+        'delete_account_failed',
+      );
+    }
+
+    return { deleted: true };
   });
 
   /** Plan 10.10 — full data export. */

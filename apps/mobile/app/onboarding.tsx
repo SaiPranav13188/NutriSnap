@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,8 +12,11 @@ import {
   MAINTAIN_FOCUS_AREAS,
   REFERRAL_SOURCES,
   calculateTargets,
+  encouragementAfter,
+  onboardingProgress,
   stepsFor,
   validateStep,
+  type Encouragement,
   type OnboardingAnswers,
   type StepId,
 } from '@nutrisnap/core';
@@ -23,6 +26,7 @@ import { ProgressRing } from '../src/components/ProgressRing';
 import { DateOfBirthPicker } from '../src/components/DateOfBirthPicker';
 import { HeightPicker } from '../src/components/HeightPicker';
 import { RulerPicker } from '../src/components/RulerPicker';
+import { EncouragementOverlay } from '../src/components/EncouragementOverlay';
 import { storeAnswers, readStoredAnswers } from '../src/lib/session';
 import { useColors } from '../src/lib/theme';
 
@@ -50,6 +54,15 @@ export default function Onboarding() {
   const [index, setIndex] = useState(0);
   const [showError, setShowError] = useState(false);
   const [crafted, setCrafted] = useState(0);
+  /** The quote showing between questions, if one is due. */
+  const [encouragement, setEncouragement] = useState<Encouragement | null>(null);
+  /**
+   * Which ones have already been shown.
+   *
+   * Without this, stepping back over a boundary and forward again replays the
+   * same quote — which turns a breather into an obstacle.
+   */
+  const shownEncouragements = useRef(new Set<number>());
 
   useEffect(() => {
     void readStoredAnswers().then((stored) => {
@@ -79,8 +92,24 @@ export default function Onboarding() {
       return;
     }
     setShowError(false);
+
+    // Shown over the quiz rather than woven into it, so the step list, the
+    // validation and the progress bar all stay exactly as they were.
+    const due = encouragementAfter(index, steps);
+    if (due && !shownEncouragements.current.has(index)) {
+      shownEncouragements.current.add(index);
+      setEncouragement(due);
+      return;
+    }
+
     setIndex((i) => Math.min(i + 1, steps.length - 1));
   };
+
+  /** Dismissing the quote is what actually advances the question. */
+  const dismissEncouragement = useCallback(() => {
+    setEncouragement(null);
+    setIndex((i) => Math.min(i + 1, steps.length - 1));
+  }, [steps.length]);
 
   const goBack = () => {
     setShowError(false);
@@ -231,6 +260,16 @@ export default function Onboarding() {
           </View>
         )}
       </SafeAreaView>
+
+      {/* Over the whole screen, so the question underneath keeps its state
+          and simply reappears when this clears. */}
+      {encouragement && (
+        <EncouragementOverlay
+          encouragement={encouragement}
+          progress={onboardingProgress(answers, index + 1)}
+          onDone={dismissEncouragement}
+        />
+      )}
     </Screen>
   );
 }

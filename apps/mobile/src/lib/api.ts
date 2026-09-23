@@ -4,7 +4,11 @@ import type {
   FoodAnalysis,
   FoodLog,
   MacroTotals,
+  MealBudget,
+  MealSlot,
+  MealSuggestion,
   Profile,
+  RankedDish,
   ProgressRange,
   Streak,
   WeightLog,
@@ -78,6 +82,40 @@ const patch = <T>(path: string, body: unknown) =>
 export interface AnalysisResponse {
   analysis: FoodAnalysis;
   photo_url: string | null;
+}
+
+/** One recorded move of the calorie target, newest first from the API. */
+export interface TargetAdjustment {
+  id: string;
+  previous_calories: number;
+  new_calories: number;
+  estimated_tdee: number | null;
+  reason: string;
+  days_analyzed: number | null;
+  created_at: string;
+}
+
+/** The adaptive engine's verdict — what it would do, or what it just did. */
+export interface AdaptiveOutcome {
+  shouldAdjust: boolean;
+  reason: string;
+  estimatedTdee: number | null;
+  previousCalories: number;
+  newCalories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  applied: boolean;
+  daysAnalyzed: number;
+}
+
+export interface MenuResponse {
+  /** The restaurant, when the menu printed its own name. */
+  venue: string | null;
+  budget: MealBudget;
+  protein_left_g: number;
+  /** Already ranked by the server, best first, excluded last. */
+  dishes: RankedDish[];
 }
 
 export interface DayRollover {
@@ -175,6 +213,45 @@ export interface ProgressResponse {
   streak: Streak;
 }
 
+/**
+ * The query string for a day-scoped request.
+ *
+ * The offset travels with every one of them. Without it the server buckets
+ * days in UTC, and anyone east or west of it loses the hours where their own
+ * calendar disagrees — a walk logged at half past midnight in India was
+ * stored against the previous day and then looked for under the current one.
+ */
+function dayParams(date?: string): string {
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  // getTimezoneOffset is minutes *behind* UTC, so it is negated to read as
+  // minutes east: India comes out as +330.
+  params.set('tz_offset', String(-new Date().getTimezoneOffset()));
+  return `?${params.toString()}`;
+}
+
+export interface StrengthSession {
+  id: string;
+  total_kcal: number;
+  set_count: number;
+  active_seconds: number;
+  total_seconds: number;
+  started_at: string;
+  ended_at: string | null;
+  logged_on: string;
+}
+
+export interface StrengthSet {
+  id: string;
+  exercise: string;
+  category: 'strength' | 'circuit' | 'bodyweight' | 'cardio';
+  set_number: number;
+  reps: number | null;
+  weight_kg: number | null;
+  active_seconds: number;
+  calories: number;
+}
+
 export const api = {
   getProfile: () => request<{ profile: Profile; targets: DailyTarget | null }>('/api/profile'),
 
@@ -187,6 +264,26 @@ export const api = {
   getTargets: () => request<{ targets: DailyTarget }>('/api/targets'),
 
   recalculateTargets: () => post<{ targets: DailyTarget }>('/api/targets/calculate'),
+
+  /** What the user's own logged history says their target should be. */
+  getAdaptive: () => request<{ adaptive: AdaptiveOutcome }>('/api/targets/adaptive'),
+
+  /** Accept that verdict and move the target. */
+  applyAdaptive: () =>
+    post<{ adaptive: AdaptiveOutcome; targets: DailyTarget | null }>('/api/targets/adaptive'),
+
+  getTargetAdjustments: () =>
+    request<{ adjustments: TargetAdjustment[] }>('/api/targets/adjustments'),
+
+  /**
+   * Irreversible. `confirm` must be the account's own email address, which is
+   * what stops a stray tap from finishing the job.
+   */
+  deleteAccount: (confirm: string) =>
+    request<{ deleted: true }>('/api/profile', {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm }),
+    }),
 
   analyzePhoto: (body: {
     image: string;
@@ -204,10 +301,25 @@ export const api = {
 
   lookupBarcode: (code: string) => request<AnalysisResponse>(`/api/food/barcode/${code}`),
 
+  /** Photograph a restaurant menu and get it ranked against what is left today. */
+  analyzeMenu: (body: { image: string; media_type?: string; slot: MealSlot }) =>
+    post<MenuResponse>('/api/food/analyze-menu', {
+      ...body,
+      tz_offset: -new Date().getTimezoneOffset(),
+    }),
+
+  /** `exclude` carries the dishes already on screen, for "more ideas". */
+  suggestMeals: (slot: MealSlot, exclude?: readonly string[]) =>
+    post<{ budget: MealBudget; suggestions: MealSuggestion[] }>('/api/food/suggest', {
+      slot,
+      tz_offset: -new Date().getTimezoneOffset(),
+      ...(exclude && exclude.length > 0 ? { exclude } : {}),
+    }),
+
   getPhotoUrl: (path: string) =>
     request<{ url: string }>(`/api/food/photo-url?path=${encodeURIComponent(path)}`),
 
-  getDay: (date?: string) => request<DayResponse>(`/api/logs${date ? `?date=${date}` : ''}`),
+  getDay: (date?: string) => request<DayResponse>(`/api/logs${dayParams(date)}`),
 
   getWeek: (days = 7) => request<{ days: DayTotals[]; targets: DailyTarget | null }>(
     `/api/logs/week?days=${days}`,
@@ -220,34 +332,44 @@ export const api = {
 
   getLog: (id: string) => request<{ log: FoodLog }>(`/api/logs/${id}`),
 
-  createLog: (body: Record<string, unknown>) => post<{ log: FoodLog }>('/api/logs', body),
+  createLog: (body: Record<string, unknown>) =>
+    post<{ log: FoodLog }>(`/api/logs${dayParams()}`, body),
 
   updateLog: (id: string, body: Record<string, unknown>) =>
     patch<{ log: FoodLog }>(`/api/logs/${id}`, body),
 
-  deleteLog: (id: string) => request<void>(`/api/logs/${id}`, { method: 'DELETE' }),
+  /** Plate-diff: correct a logged meal by a photo of what was left. */
+  correctLeftovers: (id: string, image: string, media_type?: string) =>
+    post<{ log: FoodLog; changed: boolean; eaten_fraction: number; note: string }>(
+      `/api/logs/${id}/leftovers`,
+      { image, media_type },
+    ),
 
-  getStreak: () => request<{ streak: Streak }>('/api/streak'),
+  deleteLog: (id: string) =>
+    request<void>(`/api/logs/${id}${dayParams()}`, { method: 'DELETE' }),
+
+  getStreak: () => request<{ streak: Streak }>(`/api/streak${dayParams()}`),
 
   logWeight: (weight_kg: number) =>
     post<{ weight_log: WeightLog; targets: DailyTarget | null }>('/api/weight', { weight_kg }),
 
-  getProgress: (range: ProgressRange) => request<ProgressResponse>(`/api/progress?range=${range}`),
+  getProgress: (range: ProgressRange) =>
+    request<ProgressResponse>(
+      `/api/progress?range=${range}&tz_offset=${-new Date().getTimezoneOffset()}`,
+    ),
 
   exportData: () => request<Record<string, unknown>>('/api/export'),
 
   // --- Water -------------------------------------------------------------
 
   getWater: (date?: string) =>
-    request<{ date: string; logs: WaterLog[]; total_ml: number }>(
-      `/api/water${date ? `?date=${date}` : ''}`,
-    ),
+    request<{ date: string; logs: WaterLog[]; total_ml: number }>(`/api/water${dayParams(date)}`),
 
   addWater: (amount_ml: number) =>
     post<{ water_log: WaterLog }>('/api/water', { amount_ml }),
 
   undoWater: (date?: string) =>
-    request<void>(`/api/water/last${date ? `?date=${date}` : ''}`, { method: 'DELETE' }),
+    request<void>(`/api/water/last${dayParams(date)}`, { method: 'DELETE' }),
 
   // --- Exercise ----------------------------------------------------------
 
@@ -257,7 +379,22 @@ export const api = {
       logs: ExerciseLog[];
       total_calories: number;
       total_minutes: number;
-    }>(`/api/exercise${date ? `?date=${date}` : ''}`),
+    }>(`/api/exercise${dayParams(date)}`),
+
+  // --- Strength sessions --------------------------------------------------
+
+  getStrengthSessions: (limit = 5) =>
+    request<{ sessions: StrengthSession[] }>(`/api/strength/sessions?limit=${limit}`),
+
+  getStrengthSession: (id: string) =>
+    request<{ session: StrengthSession; sets: StrengthSet[] }>(`/api/strength/sessions/${id}`),
+
+  saveStrengthSession: (body: {
+    active_seconds: number;
+    total_seconds: number;
+    started_at?: string;
+    sets: Array<Record<string, unknown>>;
+  }) => post<{ session: StrengthSession }>('/api/strength/sessions', body),
 
   addExercise: (body: Record<string, unknown>) =>
     post<{ exercise_log: ExerciseLog }>('/api/exercise', body),

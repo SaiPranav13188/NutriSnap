@@ -184,3 +184,51 @@ export function ageInYears(dob: Date, now: Date = new Date()): number {
   if (beforeBirthdayThisYear) age -= 1;
   return age;
 }
+
+/**
+ * A day, as the person living it means it.
+ *
+ * Every day-bucketed table carries a `logged_on` column generated as
+ * `(logged_at at time zone 'UTC')::date`, and the reads used to filter on it.
+ * That is only correct for people sitting on UTC. Everyone else has a window
+ * each day where their clock and the column disagree about the date — five
+ * and a half hours of it in India, where a walk logged at half past midnight
+ * was stored against the previous day and then looked for under the current
+ * one. It saved correctly and vanished.
+ *
+ * So day-scoped reads work from the instant instead: local midnight to local
+ * midnight, expressed in UTC. The column stays as it is, still backing the
+ * indexes and the weekly rollups, but nothing that has to agree with a
+ * person's own calendar depends on it.
+ */
+export interface DayWindow {
+  /** The local calendar day this window covers. */
+  date: string;
+  /** Inclusive UTC instant of local midnight. */
+  from: string;
+  /** Exclusive UTC instant of the next local midnight. */
+  to: string;
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * @param tzOffsetMin Minutes east of UTC, as a client's own clock reports it:
+ *   India is +330, New York is -300. Zero means UTC, which is both the old
+ *   behaviour and the right answer for a caller that does not say.
+ */
+export function dayWindow(date: string | undefined, tzOffsetMin = 0): DayWindow {
+  const offsetMs = tzOffsetMin * 60_000;
+
+  // "Today" has to be worked out in the caller's zone too, or a request that
+  // names no date lands on the wrong one for exactly the same reason.
+  const key = date ?? new Date(Date.now() + offsetMs).toISOString().slice(0, 10);
+
+  const from = Date.parse(`${key}T00:00:00.000Z`) - offsetMs;
+
+  return {
+    date: key,
+    from: new Date(from).toISOString(),
+    to: new Date(from + DAY_MS).toISOString(),
+  };
+}

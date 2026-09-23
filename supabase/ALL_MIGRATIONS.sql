@@ -439,9 +439,25 @@ $fn$;
 
 -- ---------------------------------------------------------------------------
 -- Recompute a user's logging streak from their food_logs history.
--- Called after a log is written. Idempotent.
+-- Called after a log is written, and on read so the flame goes out on its own
+-- once a day is missed. Idempotent.
+--
+-- `p_tz_offset` is minutes east of UTC, matching the `tz_offset` every
+-- day-scoped read already carries: India is +330, New York is -300. It has to
+-- be here because a streak is a question about consecutive days on the
+-- *user's* calendar, and bucketing on UTC answers it for nobody but the users
+-- sitting on UTC. In India a meal logged at 1am was filed under the previous
+-- UTC day, so today produced no distinct day at all and the run came back one
+-- short of what the person had actually done.
+--
+-- Zero keeps the old behaviour for a caller that does not say.
 -- ---------------------------------------------------------------------------
-create or replace function public.recompute_streak(p_user uuid)
+
+-- The single-argument version this replaces has to go, or PostgREST sees two
+-- candidates for the same name and cannot pick one.
+drop function if exists public.recompute_streak(uuid);
+
+create or replace function public.recompute_streak(p_user uuid, p_tz_offset int default 0)
 returns public.streaks
 language plpgsql
 security definer
@@ -454,14 +470,17 @@ declare
   v_prev     date;
   v_day      date;
   v_last     date;
-  v_today    date := current_date;
+  -- Today on the caller's calendar, not the server's. `current_date` would
+  -- also depend on whatever TimeZone the session happens to carry.
+  v_today    date := ((now() at time zone 'UTC') + (p_tz_offset * interval '1 minute'))::date;
 begin
   if p_user <> coalesce(auth.uid(), p_user) then
     raise exception 'not authorized';
   end if;
 
   for v_day in
-    select distinct (logged_at at time zone 'UTC')::date as d
+    select distinct
+      ((logged_at at time zone 'UTC') + (p_tz_offset * interval '1 minute'))::date as d
     from public.food_logs
     where user_id = p_user
     order by d
@@ -522,7 +541,7 @@ as $fn$
 $fn$;
 
 grant execute on function public.nutrition_totals_by_day(uuid, date, date) to authenticated;
-grant execute on function public.recompute_streak(uuid)                    to authenticated;
+grant execute on function public.recompute_streak(uuid, int)               to authenticated;
 grant execute on function public.weight_series(uuid, timestamptz)          to authenticated;
 
 
@@ -794,3 +813,188 @@ drop policy if exists "calorie_rollovers_delete_own" on public.calorie_rollovers
 create policy "calorie_rollovers_delete_own" on public.calorie_rollovers
   for delete to authenticated
   using (auth.uid() = user_id);
+
+
+-- #########################################################################
+-- SOURCE: supabase/migrations/20260922000100_strength_sessions.sql
+-- #########################################################################
+-- ===========================================================================
+-- Strength sessions
+--
+-- A strength workout is not one number. It is a sequence of sets, each with
+-- its own exercise, its own working time and its own contribution to the
+-- total — and the summary screen has to be able to say which exercise did
+-- the most work, and how the session compares with the last five. None of
+-- that survives being flattened into a single exercise_logs row, so sets get
+-- a table and the session that owns them gets another.
+--
+-- exercise_logs still receives one row per finished session, because the
+-- "Burned today" figure, the Progress tab and the calorie budget all read
+-- from there and should not have to learn about a second source. These two
+-- tables are the detail behind that row, not a replacement for it.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- strength_sessions
+-- ---------------------------------------------------------------------------
+create table if not exists public.strength_sessions (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references public.profiles(id) on delete cascade,
+
+  -- Denormalised from the sets so the list screen and the rolling average do
+  -- not have to aggregate children on every read.
+  total_kcal      int not null default 0 check (total_kcal between 0 and 20000),
+  set_count       int not null default 0 check (set_count between 0 and 500),
+
+  -- Working time and wall-clock time are different questions: the calorie
+  -- maths uses the first, the "how long were you in the gym" figure the
+  -- second. Storing both means neither has to be inferred later.
+  active_seconds  int not null default 0 check (active_seconds between 0 and 86400),
+  total_seconds   int not null default 0 check (total_seconds between 0 and 86400),
+
+  started_at      timestamptz not null default now(),
+  ended_at        timestamptz,
+  logged_on       date generated always as ((started_at at time zone 'UTC')::date) stored,
+  created_at      timestamptz not null default now()
+);
+
+create index if not exists strength_sessions_user_started_idx
+  on public.strength_sessions (user_id, started_at desc);
+
+-- ---------------------------------------------------------------------------
+-- strength_sets
+--
+-- One row per set, in the order they were performed. `calories` is stored
+-- rather than derived so a session keeps the figure it was logged with, even
+-- if the MET table is retuned afterwards — the same reason exercise_logs
+-- stores calories_burned instead of recomputing it.
+-- ---------------------------------------------------------------------------
+create table if not exists public.strength_sets (
+  id              uuid primary key default gen_random_uuid(),
+  session_id      uuid not null references public.strength_sessions(id) on delete cascade,
+  user_id         uuid not null references public.profiles(id) on delete cascade,
+
+  exercise        text not null check (char_length(exercise) between 1 and 120),
+  category        text not null default 'strength'
+                    check (category in ('strength', 'circuit', 'bodyweight', 'cardio')),
+
+  set_number      int not null check (set_number between 1 and 500),
+
+  -- Both optional. A bodyweight movement has no load to record, and a set
+  -- can be timed without anybody counting the reps.
+  reps            int check (reps is null or reps between 1 and 1000),
+  weight_kg       numeric(6, 2) check (weight_kg is null or weight_kg between 0 and 1000),
+
+  -- Working seconds only. Rest is excluded before this is written.
+  active_seconds  int not null check (active_seconds between 0 and 7200),
+  calories        numeric(8, 2) not null check (calories between 0 and 20000),
+
+  logged_at       timestamptz not null default now()
+);
+
+create index if not exists strength_sets_session_idx
+  on public.strength_sets (session_id, set_number);
+create index if not exists strength_sets_user_logged_idx
+  on public.strength_sets (user_id, logged_at desc);
+
+-- ---------------------------------------------------------------------------
+-- Row level security
+--
+-- Same shape as every other table here: a row is visible and writable only
+-- by the user whose id it carries, and the policies are forced so that even
+-- the table owner cannot read around them.
+-- ---------------------------------------------------------------------------
+alter table public.strength_sessions enable row level security;
+alter table public.strength_sets     enable row level security;
+
+alter table public.strength_sessions force row level security;
+alter table public.strength_sets     force row level security;
+
+drop policy if exists "strength_sessions_select_own" on public.strength_sessions;
+create policy "strength_sessions_select_own" on public.strength_sessions
+  for select to authenticated
+  using (auth.uid() = user_id);
+
+drop policy if exists "strength_sessions_insert_own" on public.strength_sessions;
+create policy "strength_sessions_insert_own" on public.strength_sessions
+  for insert to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "strength_sessions_update_own" on public.strength_sessions;
+create policy "strength_sessions_update_own" on public.strength_sessions
+  for update to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "strength_sessions_delete_own" on public.strength_sessions;
+create policy "strength_sessions_delete_own" on public.strength_sessions
+  for delete to authenticated
+  using (auth.uid() = user_id);
+
+drop policy if exists "strength_sets_select_own" on public.strength_sets;
+create policy "strength_sets_select_own" on public.strength_sets
+  for select to authenticated
+  using (auth.uid() = user_id);
+
+drop policy if exists "strength_sets_insert_own" on public.strength_sets;
+create policy "strength_sets_insert_own" on public.strength_sets
+  for insert to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "strength_sets_delete_own" on public.strength_sets;
+create policy "strength_sets_delete_own" on public.strength_sets
+  for delete to authenticated
+  using (auth.uid() = user_id);
+
+
+-- #########################################################################
+-- SOURCE: supabase/migrations/20260922000200_daily_step_goal.sql
+-- #########################################################################
+-- ===========================================================================
+-- Daily step goal
+--
+-- The Personal details screen shows a step goal alongside height, weight and
+-- date of birth, so it has to live where the rest of those do. Everything on
+-- that screen is read from `profiles` in one request; keeping this one field
+-- in device storage instead would mean a screen that is mostly server state
+-- with one row that silently disagrees after a reinstall.
+--
+-- It does not feed the calorie maths. Activity level already carries that,
+-- and counting the same movement twice would inflate the target. This is a
+-- target to walk to, which the app can measure a tracked session against.
+-- ===========================================================================
+
+alter table public.profiles
+  add column if not exists daily_step_goal int not null default 10000
+    -- Wide enough for someone training, bounded so a slipped keypress cannot
+    -- store a goal no one could walk.
+    check (daily_step_goal between 1000 and 50000);
+
+comment on column public.profiles.daily_step_goal is
+  'Steps per day the user is aiming for. Display and session comparison only — it does not affect calorie targets.';
+
+
+-- #########################################################################
+-- SOURCE: supabase/migrations/20260922000300_water_goal_override.sql
+-- #########################################################################
+-- ===========================================================================
+-- Water goal override
+--
+-- The water ring's target is derived from body weight, which is a reasonable
+-- default and a poor rule. Someone training in heat, someone on a medication
+-- that changes their intake, or someone whose doctor gave them a number all
+-- have a better figure than the formula does, and until now no way to say so.
+--
+-- Null means "keep deriving it". That is deliberately different from storing
+-- the derived number on signup: a stored copy would silently stop tracking
+-- the user's weight the first time it changed.
+-- ===========================================================================
+
+alter table public.profiles
+  add column if not exists water_goal_ml int
+    -- Half a litre to six: below the first is not a goal, above the second is
+    -- a figure worth discussing with a doctor rather than an app.
+    check (water_goal_ml is null or water_goal_ml between 500 and 6000);
+
+comment on column public.profiles.water_goal_ml is
+  'Explicit daily water target in millilitres. Null means derive it from body weight.';

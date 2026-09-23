@@ -12,6 +12,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
+    "eas-build-post-install": "pnpm --filter @nutrisnap/core build",
     "dev:web": "pnpm --filter @nutrisnap/web dev",
     "dev:api": "pnpm --filter @nutrisnap/api dev",
     "dev:mobile": "pnpm --filter @nutrisnap/mobile start",

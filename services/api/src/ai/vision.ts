@@ -1,4 +1,4 @@
-import { ApiError as GenAiApiError, GoogleGenAI } from '@google/genai';
+import { ApiError as GenAiApiError, FinishReason, GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { env } from '../env.js';
 import { HttpError } from '../auth.js';
@@ -21,6 +21,9 @@ import {
  */
 
 const MODEL = env.GEMINI_VISION_MODEL;
+
+/** For the calls that do not need the flagship. */
+export const LIGHT_MODEL = env.GEMINI_LIGHT_MODEL;
 
 /**
  * Built on first use rather than at import, so the API can start and serve
@@ -47,7 +50,7 @@ function getClient(): GoogleGenAI {
  *
  * `$schema` is stripped because the API rejects unknown top-level keys.
  */
-function jsonSchemaFor(schema: z.ZodType): unknown {
+export function jsonSchemaFor(schema: z.ZodType): unknown {
   const { $schema, ...rest } = z.toJSONSchema(schema) as Record<string, unknown>;
   void $schema;
   return rest;
@@ -106,18 +109,156 @@ export function assertSupportedMediaType(mediaType: string): string {
 }
 
 /** Turn an SDK failure into something the client can act on. */
+/**
+ * Room for the answer.
+ *
+ * Raised from 4096 because the newer models think before they answer, and
+ * `thoughtsTokenCount` comes out of the same allowance as the reply — a
+ * request seen spending 1,967 tokens reasoning had barely half the budget
+ * left for the JSON, so long structured answers were cut off mid-object and
+ * arrived here as unparseable rather than as the truncation they were.
+ *
+ * Deliberately generous rather than capped by a thinking setting: the
+ * `thinkingLevel` control only exists on 3.5 and newer, and pinning it here
+ * would break the older models this same helper has to serve.
+ */
+const MAX_OUTPUT_TOKENS = 12288;
+
+/** Gemini's own "try again in a moment": the model is momentarily overloaded. */
+const OVERLOADED = 503;
+
+/** Quota. Sometimes this minute's worth, sometimes the whole day's. */
+const RATE_LIMITED = 429;
+
+/** How many times a transient overload is retried before giving up. */
+const RETRIES = 2;
+
+/**
+ * The longest we will sit on a request waiting out a quota bounce.
+ *
+ * Somebody is holding a phone at a restaurant table while this happens, so
+ * there is a point past which waiting is worse than saying so. Under this,
+ * absorbing the wait beats making them tap the button again; over it, they
+ * get told how long it actually is.
+ */
+const MAX_QUOTA_WAIT_MS = 12_000;
+
+const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isOverloaded(error: unknown): boolean {
+  return error instanceof GenAiApiError && error.status === OVERLOADED;
+}
+
+interface QuotaBounce {
+  /** How long Google asked us to wait. Null when it did not say. */
+  retryAfterMs: number | null;
+  /** True when the exhausted quota resets daily, so waiting will not help. */
+  daily: boolean;
+}
+
+/**
+ * What a 429 actually means this time.
+ *
+ * The free tier bounces requests for two quite different reasons and uses the
+ * same status code for both. Going over the per-minute allowance clears
+ * itself in seconds; running out the daily allowance does not clear until
+ * tomorrow. Telling someone to "wait a few seconds and try again" when the
+ * day's quota is gone sends them round a loop that cannot succeed.
+ *
+ * The SDK stringifies Google's whole JSON error body into `message`, which
+ * carries both answers: a RetryInfo detail with the delay, and a QuotaFailure
+ * detail naming the quota that was violated. Neither is guaranteed to be
+ * there, so every step of the read is defensive and an unreadable body simply
+ * means "no idea, use the default backoff".
+ */
+function readQuotaBounce(error: GenAiApiError): QuotaBounce {
+  const bounce: QuotaBounce = { retryAfterMs: null, daily: false };
+
+  let body: unknown;
+  try {
+    body = JSON.parse(error.message);
+  } catch {
+    return bounce;
+  }
+
+  const details = (body as { error?: { details?: unknown } })?.error?.details;
+  if (!Array.isArray(details)) return bounce;
+
+  for (const detail of details) {
+    const type = String((detail as { '@type'?: unknown })?.['@type'] ?? '');
+
+    if (type.endsWith('RetryInfo')) {
+      // Protobuf durations arrive as "37s" or "1.5s".
+      const seconds = Number(
+        /^([\d.]+)s$/.exec(String((detail as { retryDelay?: unknown }).retryDelay ?? ''))?.[1],
+      );
+      if (Number.isFinite(seconds) && seconds >= 0) bounce.retryAfterMs = seconds * 1000;
+    }
+
+    if (type.endsWith('QuotaFailure')) {
+      const violations = (detail as { violations?: unknown }).violations;
+      if (Array.isArray(violations)) {
+        // e.g. "GenerateRequestsPerDayPerProjectPerModel".
+        bounce.daily = violations.some((violation) =>
+          /perday/i.test(String((violation as { quotaId?: unknown })?.quotaId ?? '')),
+        );
+      }
+    }
+  }
+
+  return bounce;
+}
+
 function rethrowAsHttp(error: unknown, what: string): never {
   if (error instanceof GenAiApiError) {
-    // 429 is the one users on the free tier will actually hit.
-    if (error.status === 429) {
+    // A 503 is the model being busy, not anything wrong with the request, and
+    // it is worth saying so — "could not" reads as a dead end when the honest
+    // answer is "try that again".
+    if (error.status === OVERLOADED) {
+      throw new HttpError(
+        503,
+        `The nutrition service is busy. Try again in a moment.`,
+        'ai_overloaded',
+      );
+    }
+
+    // 429 is the one users on the free tier will actually hit. By the time it
+    // reaches here the retry loop has already waited out anything short, so
+    // this is the case that genuinely could not be absorbed — and it says
+    // which of the two it was rather than offering the same advice to both.
+    if (error.status === RATE_LIMITED) {
+      const bounce = readQuotaBounce(error);
+
+      if (bounce.daily) {
+        throw new HttpError(
+          429,
+          "The free nutrition service has used up today's quota. It resets tomorrow.",
+          'ai_quota_exhausted',
+        );
+      }
+
+      const seconds = bounce.retryAfterMs === null ? null : Math.ceil(bounce.retryAfterMs / 1000);
       throw new HttpError(
         429,
-        'The free nutrition service is rate limited right now. Wait a few seconds and try again.',
+        seconds === null
+          ? 'The free nutrition service is rate limited right now. Wait a few seconds and try again.'
+          : `The free nutrition service is rate limited right now. Try again in about ${seconds} seconds.`,
         'ai_rate_limited',
       );
     }
     if (error.status === 401 || error.status === 403) {
       throw new HttpError(500, 'Nutrition service is misconfigured.', 'ai_unauthenticated');
+    }
+
+    // A 400 means we sent something malformed — a bad schema, or an image
+    // that never got built. Reporting that as "unavailable" points whoever
+    // is debugging it at the service instead of at the request.
+    if (error.status === 400) {
+      throw new HttpError(
+        500,
+        `Could not ${what}: the request was rejected as malformed.`,
+        'ai_bad_request',
+      );
     }
     throw new HttpError(502, `Could not ${what} right now.`, 'ai_unavailable');
   }
@@ -131,39 +272,96 @@ function rethrowAsHttp(error: unknown, what: string): never {
  * so we validate rather than trust. A response that does not parse is treated
  * as a service failure, not silently passed to the user as nutrition data.
  */
-async function generateStructured<T>(params: {
+export async function generateStructured<T>(params: {
   schema: z.ZodType<T>;
   jsonSchema: unknown;
   systemPrompt: string;
   parts: Array<Record<string, unknown>>;
   what: string;
+  /**
+   * Defaults to the repeatable setting nutrition estimation needs. Only
+   * callers whose job is to come up with something new should raise it.
+   */
+  temperature?: number;
+  /**
+   * Room for the answer, in tokens. Raise it for anything that returns a
+   * long structured result — see the note on MAX_OUTPUT_TOKENS below.
+   */
+  maxOutputTokens?: number;
+  /** Defaults to the vision model; text-only callers should pass their own. */
+  model?: string;
 }): Promise<T> {
   let raw: string | undefined;
 
-  try {
-    const response = await getClient().models.generateContent({
-      model: MODEL,
-      contents: [{ role: 'user', parts: params.parts }],
-      config: {
-        systemInstruction: params.systemPrompt,
-        responseMimeType: 'application/json',
-        responseJsonSchema: params.jsonSchema,
-        // Nutrition estimation should be repeatable: the same photo should not
-        // produce a different calorie count on each scan.
-        temperature: 0.2,
-        maxOutputTokens: 4096,
-      },
-    });
+  /**
+   * Being told to wait is retried; being told no is not.
+   *
+   * A 503 means the model was busy and the same request a second later
+   * usually succeeds. A 429 over the per-minute allowance is the same shape
+   * of problem, and Google even says how long to wait — so the wait happens
+   * here rather than being handed to the user as an error they can do nothing
+   * about except tap the button again themselves.
+   *
+   * The day's quota running out is not that, and neither is a bad request or
+   * a refusal: all three would fail identically on every attempt, so they go
+   * straight out.
+   */
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await getClient().models.generateContent({
+        model: params.model ?? MODEL,
+        contents: [{ role: 'user', parts: params.parts }],
+        config: {
+          systemInstruction: params.systemPrompt,
+          responseMimeType: 'application/json',
+          responseJsonSchema: params.jsonSchema,
+          // Nutrition estimation should be repeatable: the same photo should
+          // not produce a different calorie count on each scan.
+          temperature: params.temperature ?? 0.2,
+          maxOutputTokens: params.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
+        },
+      });
 
-    const blockReason = response.promptFeedback?.blockReason;
-    if (blockReason) {
-      throw new HttpError(422, 'That image could not be analyzed.', 'ai_refused');
+      const blockReason = response.promptFeedback?.blockReason;
+      if (blockReason) {
+        throw new HttpError(422, 'That image could not be analyzed.', 'ai_refused');
+      }
+
+      // Truncation produces JSON that stops mid-object. Catching it here
+      // names the real problem instead of blaming the data.
+      if (response.candidates?.[0]?.finishReason === FinishReason.MAX_TOKENS) {
+        throw new HttpError(
+          502,
+          'That answer was longer than expected. Try again.',
+          'ai_truncated',
+        );
+      }
+
+      raw = response.text;
+      break;
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+
+      if (attempt < RETRIES && isOverloaded(error)) {
+        // Backing off rather than hammering: the spike clears on its own.
+        await wait(700 * (attempt + 1));
+        continue;
+      }
+
+      if (attempt < RETRIES && error instanceof GenAiApiError && error.status === RATE_LIMITED) {
+        const bounce = readQuotaBounce(error);
+        // Google's own figure where it gave one, our backoff where it did
+        // not. A wait it will not honour is not a wait worth taking.
+        const delay = bounce.retryAfterMs ?? 700 * (attempt + 1);
+
+        if (!bounce.daily && delay <= MAX_QUOTA_WAIT_MS) {
+          await wait(delay);
+          continue;
+        }
+      }
+
+      return rethrowAsHttp(error, params.what);
     }
-
-    raw = response.text;
-  } catch (error) {
-    if (error instanceof HttpError) throw error;
-    return rethrowAsHttp(error, params.what);
   }
 
   if (!raw) {
@@ -239,6 +437,8 @@ export async function analyzeFoodText(description: string): Promise<FoodAnalysis
       },
     ],
     what: 'analyze that description',
+    // No image in this one, so it goes to the light model and its own quota.
+    model: LIGHT_MODEL,
   });
 }
 

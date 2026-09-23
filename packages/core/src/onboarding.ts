@@ -238,3 +238,66 @@ export const CRAFTING_STEPS = [
   'Setting your macro split',
   'Personalizing your plan',
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Encouragement between questions
+// ---------------------------------------------------------------------------
+
+/**
+ * A quiz this long is a lot to ask of someone who has not seen the app work
+ * yet, and the middle of it is where people give up. These are shown between
+ * questions — never in place of one — to break the run of forms up and say
+ * that the end is in sight.
+ */
+export interface Encouragement {
+  quote: string;
+  /** Who said it, where it is a quotation rather than our own line. */
+  author?: string;
+}
+
+export const ENCOURAGEMENTS: readonly Encouragement[] = [
+  { quote: 'The secret of getting ahead is getting started.', author: 'Mark Twain' },
+  { quote: 'Small daily improvements are what stack up to big results.' },
+  { quote: 'It does not matter how slowly you go, so long as you do not stop.', author: 'Confucius' },
+  { quote: 'You do not have to be extreme. You just have to be consistent.' },
+  { quote: 'Take care of your body. It is the only place you have to live.', author: 'Jim Rohn' },
+  { quote: 'Every answer here is one less thing you have to guess at later.' },
+  { quote: 'Motivation gets you started. Habit is what keeps you going.' },
+  { quote: 'The best time to start was a while ago. The second best is now.' },
+];
+
+/** How many questions go by between one of these and the next. */
+export const ENCOURAGEMENT_EVERY = 3;
+
+/**
+ * Whether an encouragement belongs after the step just completed.
+ *
+ * Counted over answerable steps only. The informational screens at the end —
+ * how it works, crafting, the reveal — are already their own moment, and
+ * putting a quote in front of them would interrupt the payoff rather than
+ * lighten the load.
+ *
+ * Nothing is shown after the final question either: an encouragement to keep
+ * going, immediately before the thing they were going towards, reads as a
+ * delay.
+ */
+export function encouragementAfter(
+  completedIndex: number,
+  steps: readonly StepDefinition[],
+): Encouragement | null {
+  if (completedIndex < 0 || completedIndex >= steps.length) return null;
+  if (steps[completedIndex]?.informational) return null;
+
+  const answered = steps
+    .slice(0, completedIndex + 1)
+    .filter((entry) => !entry.informational).length;
+
+  if (answered === 0 || answered % ENCOURAGEMENT_EVERY !== 0) return null;
+
+  // Nothing left to encourage anyone towards.
+  const remaining = steps.slice(completedIndex + 1).filter((entry) => !entry.informational).length;
+  if (remaining === 0) return null;
+
+  const which = answered / ENCOURAGEMENT_EVERY - 1;
+  return ENCOURAGEMENTS[which % ENCOURAGEMENTS.length] ?? null;
+}

@@ -137,6 +137,22 @@ export interface ProgressResponse {
 // Endpoints
 // ---------------------------------------------------------------------------
 
+/**
+ * The query string for a day-scoped request.
+ *
+ * The offset travels with it so the server buckets the day the way the
+ * browser's own clock does, rather than in UTC — which silently moved
+ * anything logged in the small hours onto the previous day.
+ */
+function dayParams(date?: string): string {
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  // getTimezoneOffset is minutes behind UTC, negated here to read as minutes
+  // east: India comes out as +330.
+  params.set('tz_offset', String(-new Date().getTimezoneOffset()));
+  return `?${params.toString()}`;
+}
+
 export const api = {
   getProfile: () => request<{ profile: Profile; targets: DailyTarget | null }>('/api/profile'),
 
@@ -169,7 +185,7 @@ export const api = {
   getPhotoUrl: (path: string) =>
     request<{ url: string }>(`/api/food/photo-url?path=${encodeURIComponent(path)}`),
 
-  getDay: (date?: string) => request<DayResponse>(`/api/logs${date ? `?date=${date}` : ''}`),
+  getDay: (date?: string) => request<DayResponse>(`/api/logs${dayParams(date)}`),
 
   getWeek: (days = 7) => request<WeekResponse>(`/api/logs/week?days=${days}`),
 
@@ -178,21 +194,26 @@ export const api = {
       `/api/logs/recent?limit=${opts.limit ?? 20}${opts.favoritesOnly ? '&favorites_only=true' : ''}`,
     ),
 
-  createLog: (body: Record<string, unknown>) => post<{ log: FoodLog }>('/api/logs', body),
+  createLog: (body: Record<string, unknown>) =>
+    post<{ log: FoodLog }>(`/api/logs${dayParams()}`, body),
 
   updateLog: (id: string, body: Record<string, unknown>) =>
     patch<{ log: FoodLog }>(`/api/logs/${id}`, body),
 
-  deleteLog: (id: string) => request<void>(`/api/logs/${id}`, { method: 'DELETE' }),
+  deleteLog: (id: string) =>
+    request<void>(`/api/logs/${id}${dayParams()}`, { method: 'DELETE' }),
 
-  getStreak: () => request<{ streak: Streak }>('/api/streak'),
+  getStreak: () => request<{ streak: Streak }>(`/api/streak${dayParams()}`),
 
   logWeight: (weight_kg: number) =>
     post<{ weight_log: WeightLog; targets: DailyTarget | null }>('/api/weight', { weight_kg }),
 
   getWeights: (limit = 60) => request<{ weight_logs: WeightLog[] }>(`/api/weight?limit=${limit}`),
 
-  getProgress: (range: ProgressRange) => request<ProgressResponse>(`/api/progress?range=${range}`),
+  getProgress: (range: ProgressRange) =>
+    request<ProgressResponse>(
+      `/api/progress?range=${range}&tz_offset=${-new Date().getTimezoneOffset()}`,
+    ),
 
   exportData: () => request<Record<string, unknown>>('/api/export'),
 };

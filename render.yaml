@@ -6,7 +6,7 @@ services:
   - type: web
     name: nutrisnap-api
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: .
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @nutrisnap/core build && pnpm --filter @nutrisnap/api build
