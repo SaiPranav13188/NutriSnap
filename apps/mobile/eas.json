@@ -11,8 +11,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://nutrisnap-api-tr1r.onrender.com",
-        "EXPO_PUBLIC_SUPABASE_URL": "REPLACE_WITH_SUPABASE_URL",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "REPLACE_WITH_SUPABASE_ANON_KEY",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://sjnsmfidwrtqaoelmila.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqbnNtZmlkd3J0cWFvZWxtaWxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk4OTI1MDgsImV4cCI6MjEwNTQ2ODUwOH0.UY_1Jot2ALCUegNPGTRxKg_AAA7q8vse0dl0y71sni0",
         "EXPO_PUBLIC_OAUTH_PROVIDERS": "google"
       }
     },
