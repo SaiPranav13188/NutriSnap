@@ -10,7 +10,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "REPLACE_WITH_RENDER_URL",
+        "EXPO_PUBLIC_API_URL": "https://nutrisnap-api-tr1r.onrender.com",
         "EXPO_PUBLIC_SUPABASE_URL": "REPLACE_WITH_SUPABASE_URL",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "REPLACE_WITH_SUPABASE_ANON_KEY",
         "EXPO_PUBLIC_OAUTH_PROVIDERS": "google"
