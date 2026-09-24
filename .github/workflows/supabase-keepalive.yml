@@ -1,0 +1,34 @@
+# Supabase pauses free-plan projects after a week without database activity,
+# and a paused project's hostname stops resolving — every installed APK then
+# fails sign-in with UnknownHostException. A read every three days keeps the
+# project counted as active.
+#
+# The URL and anon key come from the build profile the APK ships with, so the
+# ping always targets the same project the app does. The anon key is public by
+# design; row-level security makes this query return [] while still reaching
+# Postgres, which is what counts as activity.
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: '17 3 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps/mobile/eas.json
+          sparse-checkout-cone-mode: false
+
+      - name: Query the database
+        run: |
+          url=$(jq -r '.build.personal.env.EXPO_PUBLIC_SUPABASE_URL' apps/mobile/eas.json)
+          key=$(jq -r '.build.personal.env.EXPO_PUBLIC_SUPABASE_ANON_KEY' apps/mobile/eas.json)
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            --retry 3 --retry-delay 10 --retry-all-errors \
+            "$url/rest/v1/profiles?select=id&limit=1" \
+            -H "apikey: $key" \
+            -H "Authorization: Bearer $key"
